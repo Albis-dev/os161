@@ -39,6 +39,8 @@
 #include <thread.h>
 #include <current.h>
 #include <synch.h>
+#include <spl.h>
+#include <cpu.h>
 
 ////////////////////////////////////////////////////////////
 //
@@ -157,6 +159,23 @@ lock_create(const char *name)
 	HANGMAN_LOCKABLEINIT(&lock->lk_hangman, lock->lk_name);
 
 	// add stuff here as needed
+	struct semaphore *sem;
+
+	sem = kmalloc(sizeof(*sem));
+	if (sem == NULL) {
+		return NULL;
+	}
+
+	sem = sem_create("binary_sem", 1); // create a binary semaphore, "binary_sem"
+	if (sem == NULL) {
+		kfree(sem);
+		panic("FAILED TO CREATE SEM"); // DELETE THIS LATER
+		return NULL;
+	}
+	lock->lk_sem = sem;
+	
+	lock->lk_holder = NULL;
+	// END OF ADDED STUFFS
 
 	return lock;
 }
@@ -167,6 +186,9 @@ lock_destroy(struct lock *lock)
 	KASSERT(lock != NULL);
 
 	// add stuff here as needed
+	kfree(lock->lk_sem);
+	kfree(lock->lk_holder);
+	// END OF ADDED STUFFS
 
 	kfree(lock->lk_name);
 	kfree(lock);
@@ -175,36 +197,57 @@ lock_destroy(struct lock *lock)
 void
 lock_acquire(struct lock *lock)
 {
+	int old_p_level; // to store an old priority level value. check spl.h for more details.
+
 	/* Call this (atomically) before waiting for a lock */
-	//HANGMAN_WAIT(&curthread->t_hangman, &lock->lk_hangman);
+	old_p_level = splhigh();
+	HANGMAN_WAIT(&curthread->t_hangman, &lock->lk_hangman);
+	splx(old_p_level);
 
 	// Write this
-
-	(void)lock;  // suppress warning until code gets written
+	old_p_level = splhigh();
+	P(lock->lk_sem);
+	KASSERT(lock->lk_sem->sem_count == 0);
+	if (!CURCPU_EXISTS()) {
+		panic("CPU DOENS'T EXIST!");
+	}
+	lock->lk_holder = curcpu->c_curthread;
+	KASSERT(lock->lk_holder != NULL);
+	splx(old_p_level);
 
 	/* Call this (atomically) once the lock is acquired */
-	//HANGMAN_ACQUIRE(&curthread->t_hangman, &lock->lk_hangman);
+	old_p_level = splhigh();
+	HANGMAN_ACQUIRE(&curthread->t_hangman, &lock->lk_hangman);
+	splx(old_p_level);
 }
 
 void
 lock_release(struct lock *lock)
 {
-	/* Call this (atomically) when the lock is released */
-	//HANGMAN_RELEASE(&curthread->t_hangman, &lock->lk_hangman);
+	int old_p_level;
 
 	// Write this
+	old_p_level = splhigh();
+	V(lock->lk_sem);
+	KASSERT(lock->lk_sem->sem_count == 1);
+	lock->lk_holder = NULL;
+	splx(old_p_level);
 
-	(void)lock;  // suppress warning until code gets written
+	/* Call this (atomically) when the lock is released */
+	old_p_level = splhigh();
+	HANGMAN_RELEASE(&curthread->t_hangman, &lock->lk_hangman);
+	splx(old_p_level);
 }
 
 bool
 lock_do_i_hold(struct lock *lock)
 {
+	
 	// Write this
-
-	(void)lock;  // suppress warning until code gets written
-
-	return true; // dummy until code gets written
+	if (!CURCPU_EXISTS()){
+		return false;
+	}
+	return(lock->lk_holder == curcpu->c_curthread);
 }
 
 ////////////////////////////////////////////////////////////
