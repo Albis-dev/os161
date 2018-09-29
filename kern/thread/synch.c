@@ -169,7 +169,6 @@ lock_create(const char *name)
 	sem = sem_create("binary_sem", 1); // create a binary semaphore, "binary_sem"
 	if (sem == NULL) {
 		kfree(sem);
-		panic("FAILED TO CREATE SEM"); // DELETE THIS LATER
 		return NULL;
 	}
 	lock->lk_sem = sem;
