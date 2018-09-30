@@ -294,9 +294,6 @@ void
 cv_wait(struct cv *cv, struct lock *lock)
 {
 	// Write this
-	int old_p_level;
-	old_p_level = splhigh();
-
 	KASSERT(lock_do_i_hold(lock));
 
 	spinlock_acquire(&cv->cv_lock);
@@ -310,16 +307,12 @@ cv_wait(struct cv *cv, struct lock *lock)
 
 	lock_acquire(lock);
 	KASSERT(lock_do_i_hold(lock));
-
-	splx(old_p_level);
 }
 
 void
 cv_signal(struct cv *cv, struct lock *lock)
 {
 	// Write this
-	int old_p_level;
-	old_p_level = splhigh();
 	KASSERT(lock_do_i_hold(lock));
 
 	spinlock_acquire(&cv->cv_lock);
@@ -329,16 +322,12 @@ cv_signal(struct cv *cv, struct lock *lock)
 
 	spinlock_release(&cv->cv_lock);
 	KASSERT(!spinlock_do_i_hold(&cv->cv_lock));	
-
-	splx(old_p_level);
 }
 
 void
 cv_broadcast(struct cv *cv, struct lock *lock)
 {
 	// Write this
-	int old_p_level;
-	old_p_level = splhigh();
 	KASSERT(lock_do_i_hold(lock));
 
 	spinlock_acquire(&cv->cv_lock);
@@ -348,6 +337,4 @@ cv_broadcast(struct cv *cv, struct lock *lock)
 
 	spinlock_release(&cv->cv_lock);
 	KASSERT(!spinlock_do_i_hold(&cv->cv_lock));	
-
-	splx(old_p_level);
 }
