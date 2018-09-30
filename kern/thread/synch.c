@@ -161,16 +161,7 @@ lock_create(const char *name)
 	// add stuff here as needed
 	struct semaphore *sem;
 
-	sem = kmalloc(sizeof(*sem));
-	if (sem == NULL) {
-		return NULL;
-	}
-
 	sem = sem_create("binary_sem", 1); // create a binary semaphore, "binary_sem"
-	if (sem == NULL) {
-		kfree(sem);
-		return NULL;
-	}
 	lock->lk_sem = sem;
 	
 	lock->lk_holder = NULL;
@@ -185,8 +176,8 @@ lock_destroy(struct lock *lock)
 	KASSERT(lock != NULL);
 
 	// add stuff here as needed
-	kfree(lock->lk_sem);
-	kfree(lock->lk_holder);
+	KASSERT(lock->lk_holder == NULL);
+	sem_destroy(lock->lk_sem);
 	// END OF ADDED STUFFS
 
 	kfree(lock->lk_name);
