@@ -262,6 +262,14 @@ cv_create(const char *name)
 	}
 
 	// add stuff here as needed
+	cv->cv_wchan = wchan_create(cv->cv_name);
+	if (cv->cv_wchan == NULL) {
+		kfree(cv->cv_name);
+		kfree(cv);
+		return NULL;
+	}
+
+	spinlock_init(&cv->cv_lock);
 
 	return cv;
 }
@@ -270,8 +278,13 @@ void
 cv_destroy(struct cv *cv)
 {
 	KASSERT(cv != NULL);
+	spinlock_acquire(&cv->cv_lock);
+	KASSERT(wchan_isempty(cv->cv_wchan, &cv->cv_lock));
 
 	// add stuff here as needed
+	wchan_destroy(cv->cv_wchan);
+	spinlock_release(&cv->cv_lock);
+	spinlock_cleanup(&cv->cv_lock);
 
 	kfree(cv->cv_name);
 	kfree(cv);
@@ -281,22 +294,60 @@ void
 cv_wait(struct cv *cv, struct lock *lock)
 {
 	// Write this
-	(void)cv;    // suppress warning until code gets written
-	(void)lock;  // suppress warning until code gets written
+	int old_p_level;
+	old_p_level = splhigh();
+
+	KASSERT(lock_do_i_hold(lock));
+
+	spinlock_acquire(&cv->cv_lock);
+	KASSERT(spinlock_do_i_hold(&cv->cv_lock));
+
+	lock_release(lock);
+
+	wchan_sleep(cv->cv_wchan, &cv->cv_lock);
+	spinlock_release(&cv->cv_lock);
+	KASSERT(!spinlock_do_i_hold(&cv->cv_lock));
+
+	lock_acquire(lock);
+	KASSERT(lock_do_i_hold(lock));
+
+	splx(old_p_level);
 }
 
 void
 cv_signal(struct cv *cv, struct lock *lock)
 {
 	// Write this
-	(void)cv;    // suppress warning until code gets written
-	(void)lock;  // suppress warning until code gets written
+	int old_p_level;
+	old_p_level = splhigh();
+	KASSERT(lock_do_i_hold(lock));
+
+	spinlock_acquire(&cv->cv_lock);
+	KASSERT(spinlock_do_i_hold(&cv->cv_lock));
+	
+	wchan_wakeone(cv->cv_wchan, &cv->cv_lock);
+
+	spinlock_release(&cv->cv_lock);
+	KASSERT(!spinlock_do_i_hold(&cv->cv_lock));	
+
+	splx(old_p_level);
 }
 
 void
 cv_broadcast(struct cv *cv, struct lock *lock)
 {
 	// Write this
-	(void)cv;    // suppress warning until code gets written
-	(void)lock;  // suppress warning until code gets written
+	int old_p_level;
+	old_p_level = splhigh();
+	KASSERT(lock_do_i_hold(lock));
+
+	spinlock_acquire(&cv->cv_lock);
+	KASSERT(spinlock_do_i_hold(&cv->cv_lock));
+
+	wchan_wakeall(cv->cv_wchan, &cv->cv_lock);
+
+	spinlock_release(&cv->cv_lock);
+	KASSERT(!spinlock_do_i_hold(&cv->cv_lock));	
+
+	splx(old_p_level);
 }
