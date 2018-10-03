@@ -14,7 +14,13 @@
 
 #include <current.h>
 
-#define LOOPCOUNT 1000
+/*
+ * You can stress-test the R/W lock implementation by increasing LOOPCOUNT.
+ * But make sure to set it back to 1 when you are going to run test161.
+ */
+#define NTHREADS 32
+#define LOOPCOUNT 1
+
 /*
  * Use these stubs to test your reader-writer locks.
  */
@@ -23,9 +29,8 @@
 static volatile unsigned long ctr;
 
 // Synchronization primitives
-static struct rwlock *rwlock = NULL;
-static struct cv *cv = NULL;
-static struct lock *lock = NULL;
+struct rwlock *rwlock = NULL;
+struct semaphore *donesem = NULL;
 
 /* 
  * Since thread_fork() returns its own return code,
@@ -41,16 +46,17 @@ void reader(void *junk, unsigned long j) {
 	(void)junk;
 	(void)j;
 
+	random_yielder(10);
+
 	virtual_rc = 0;
 	
 	rwlock_acquire_read(rwlock);
+	kprintf(".");
 	virtual_rc = ctr; // the "read" part
 	KASSERT(virtual_rc == ctr); // must have same value
 	rwlock_release_read(rwlock);
 
-	lock_acquire(lock);
-	cv_signal(cv, lock);
-	lock_release(lock);
+	V(donesem);
 }
 
 /*
@@ -60,17 +66,18 @@ void writer(void *junk, unsigned long j) {
 	(void)junk;
 	(void)j;
 
+	random_yielder(10);
+
 	unsigned long old_ctr;
 
 	rwlock_acquire_read(rwlock);
+	kprintf("*");
 	old_ctr = ctr;
 	ctr++;
 	KASSERT(ctr - old_ctr == 1);
 	rwlock_release_read(rwlock);
 
-	lock_acquire(lock);
-	cv_signal(cv, lock);
-	lock_release(lock);
+	V(donesem);
 }
 
 /*
@@ -82,12 +89,8 @@ void synch_init() {
 
 	rwlock = rwlock_create("testlock");
 	KASSERT(rwlock != NULL);
-
-	cv = cv_create("rwtesthread");
-	KASSERT(cv != NULL);
-
-	lock = lock_create("rwtestthread");
-	KASSERT(lock != NULL);
+	
+	donesem = sem_create("donesem", 0);
 }
 
 /*
@@ -95,8 +98,9 @@ void synch_init() {
  */
 void synch_destroy() {
 	rwlock_destroy(rwlock);
-	cv_destroy(cv);
-	lock_destroy(lock);
+	sem_destroy(donesem);
+	rwlock = NULL;
+	donesem = NULL;
 }
 
 /*
@@ -104,38 +108,39 @@ void synch_destroy() {
  *  
  * - WHAT IT DOES
  * 1. Initialize all the synchronization primitives.
- * 2. Make "ctr" to LOOPCOUNT by using writer() helper function.
- * 3. Check if ctr == LOOPCOUNT
+ * 2. Make a race condition between reader() and writer() then let them run.
+ * 	  (reader() will panic if R/W lock is not working properly)
+ * 3. Repeat LOOPCOUNT times.
  * 
  * - PURPOSE
  * This test checks the basic mutual exclusion feature of R/W lock.
  */
 int test1() {
+	int result; 
+
 	synch_init();
 
-	for (int i=0; i<LOOPCOUNT; i++) {
-		thread_fork("rwt1", NULL, writer, NULL, 0);
-	}
-	while (ctr != LOOPCOUNT) {
-		lock_acquire(lock);
-		cv_wait(cv, lock);
-		lock_release(lock);
-	}
-	KASSERT(ctr == LOOPCOUNT);
+	for (int j=0; j<LOOPCOUNT; j++) {
+		for (int i=0; i<NTHREADS; i++) {
+			result = thread_fork("rwt1", NULL, writer, NULL, 0);
+			if (result) {
+				panic("FORK FAILED");
+			}
+		}
 
-	thread_fork("rwt1", NULL, (void(*))reader, NULL, 0);
-	lock_acquire(lock);
-	cv_wait(cv, lock);
-	lock_release(lock);
+		result = thread_fork("rwt1", NULL, reader, NULL, 0);
+		if (result) {
+			panic("FORK FAILED");
+		}
+		
+		for (int i=0; i<NTHREADS+1; i++) {
+			P(donesem);
+		}
 
-	kprintf_n("READER GETS : %lu\n\n", virtual_rc);
-	kprintf_n("ACTUAL COUNTER IS : %lu\n\n", ctr);
+		kprintf_n(" reader() : %lu\n\n", virtual_rc);
+	}
 
 	synch_destroy();
-
-	if (virtual_rc != LOOPCOUNT || ctr != LOOPCOUNT) {
-		panic("TEST FAILED!");
-	}
 
 	return 0;
 }
@@ -153,12 +158,60 @@ int rwtest(int nargs, char **args) {
 	return 0;
 }
 
+/*
+ * (rwt2) RW TEST 2
+ *  
+ * - WHAT IT DOES
+ * 1. Fork NTHREADS threads running reader().
+ * 2. Fork one thread running writer().
+ * 3. Fork NTHREADS threads running reader(). (again!)
+ * 4. Repeat this LOOPCOUNT times.
+ * 
+ * - PURPOSE
+ * This test checks if the writer doesn't starve under extreme circumstance.
+ */
+int test2() {
+	int result;
+
+	synch_init();
+
+	for(int j=0; j<LOOPCOUNT; j++) {
+		for (int i=0; i<NTHREADS; i++) {
+			result = thread_fork("rwt2", NULL, reader, NULL, 0);
+			if (result) {
+				panic("FORK FAILED");
+			}
+		}
+		result = thread_fork("rwt2", NULL, writer, NULL, 0);
+		if (result) {
+			panic("FORK FAILED");
+		}
+		for (int i=0; i<NTHREADS; i++) {
+			result = thread_fork("rwt2", NULL, reader, NULL, 0);
+			if (result) {
+				panic("FORK FAILED");
+			}
+		}
+
+		for (int i=0; i<NTHREADS*2+1; i++) {
+			P(donesem);
+		}
+	}
+
+	KASSERT(ctr == LOOPCOUNT);
+
+	synch_destroy();
+
+	return 0;
+}
+
 int rwtest2(int nargs, char **args) {
 	(void)nargs;
 	(void)args;
 
-	kprintf_n("rwt2 unimplemented\n");
-	success(TEST161_FAIL, SECRET, "rwt2");
+	test2();
+
+	success(TEST161_SUCCESS, SECRET, "rwt2");
 
 	return 0;
 }

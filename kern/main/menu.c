@@ -600,7 +600,7 @@ static const char *testmenu[] = {
 	"[cvt3] CV test 3             (1*)   ",
 	"[cvt4] CV test 4             (1*)   ",
 	"[cvt5] CV test 5             (1)    ",
-	"[rwt1] RW lock test          (1?)   ",
+	"[rwt1] RW lock test          (1)   ",
 	"[rwt2] RW lock test 2        (1?)   ",
 	"[rwt3] RW lock test 3        (1?)   ",
 	"[rwt4] RW lock test 4        (1?)   ",
