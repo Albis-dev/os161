@@ -74,6 +74,11 @@ int rwtest3(int, char **);
 int rwtest4(int, char **);
 int rwtest5(int, char **);
 
+int test1(void);
+void reader(void *, unsigned long);
+void writer(void *, unsigned long);
+
+
 /* semaphore unit tests */
 int semu1(int, char **);
 int semu2(int, char **);
