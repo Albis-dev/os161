@@ -35,8 +35,8 @@ static struct lock *lock = NULL;
 static unsigned long virtual_rc;
 
 /*
- * A helper function.
-*/
+ * Read ctr while the rwlock is held.
+ */
 void reader(void *junk, unsigned long j) {
 	(void)junk;
 	(void)j;
@@ -44,8 +44,8 @@ void reader(void *junk, unsigned long j) {
 	virtual_rc = 0;
 	
 	rwlock_acquire_read(rwlock);
-	virtual_rc = ctr;
-	KASSERT(virtual_rc == ctr);
+	virtual_rc = ctr; // the "read" part
+	KASSERT(virtual_rc == ctr); // must have same value
 	rwlock_release_read(rwlock);
 
 	lock_acquire(lock);
@@ -54,8 +54,8 @@ void reader(void *junk, unsigned long j) {
 }
 
 /*
- * A helper function.
-*/
+ * Increment ctr by 1.
+ */
 void writer(void *junk, unsigned long j) {
 	(void)junk;
 	(void)j;
@@ -74,17 +74,9 @@ void writer(void *junk, unsigned long j) {
 }
 
 /*
- * (rwt1) RW TEST 1
- *  
- * - WHAT IT DOES
- * 1. Initialize all the synchronization primitives.
- * 2. Make "ctr" to LOOPCOUNT by using writer() helper function.
- * 3. Check if ctr == LOOPCOUNT
- * 
- * - PURPOSE
- * This test checks the basic mutual exclusion feature of R/W lock.
+ * Initialize all the synchronization primitives.
  */
-int test1() {
+void synch_init() {
 	ctr = 0;
 	KASSERT(ctr == 0);
 
@@ -96,6 +88,30 @@ int test1() {
 
 	lock = lock_create("rwtestthread");
 	KASSERT(lock != NULL);
+}
+
+/*
+ * Destroy all the synchronization primitives.
+ */
+void synch_destroy() {
+	rwlock_destroy(rwlock);
+	cv_destroy(cv);
+	lock_destroy(lock);
+}
+
+/*
+ * (rwt1) RW TEST 1
+ *  
+ * - WHAT IT DOES
+ * 1. Initialize all the synchronization primitives.
+ * 2. Make "ctr" to LOOPCOUNT by using writer() helper function.
+ * 3. Check if ctr == LOOPCOUNT
+ * 
+ * - PURPOSE
+ * This test checks the basic mutual exclusion feature of R/W lock.
+ */
+int test1() {
+	synch_init();
 
 	for (int i=0; i<LOOPCOUNT; i++) {
 		thread_fork("rwt1", NULL, writer, NULL, 0);
@@ -115,10 +131,12 @@ int test1() {
 	kprintf_n("READER GETS : %lu\n\n", virtual_rc);
 	kprintf_n("ACTUAL COUNTER IS : %lu\n\n", ctr);
 
+	synch_destroy();
+
 	if (virtual_rc != LOOPCOUNT || ctr != LOOPCOUNT) {
 		panic("TEST FAILED!");
 	}
-	
+
 	return 0;
 }
 

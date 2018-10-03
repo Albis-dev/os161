@@ -75,6 +75,8 @@ int rwtest4(int, char **);
 int rwtest5(int, char **);
 
 int test1(void);
+void synch_init(void);
+void synch_destroy(void);
 void reader(void *, unsigned long);
 void writer(void *, unsigned long);
 
