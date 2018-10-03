@@ -156,11 +156,16 @@ void cv_broadcast(struct cv *cv, struct lock *lock);
 struct rwlock {
         char *rwlock_name;
         // add what you need here
-        // (don't forget to mark things volatile as needed)
+        volatile int ctrin;
+        volatile int ctrout;
+        bool isWriterWaiting;
+        struct semaphore *in;
+        struct semaphore *out;
+        struct semaphore *wrt;
 };
 
-struct rwlock * rwlock_create(const char *);
-void rwlock_destroy(struct rwlock *);
+struct rwlock * rwlock_create(const char *rwlock);
+void rwlock_destroy(struct rwlock *rwlock);
 
 /*
  * Operations:
@@ -174,9 +179,9 @@ void rwlock_destroy(struct rwlock *);
  * These operations must be atomic. You get to write them.
  */
 
-void rwlock_acquire_read(struct rwlock *);
-void rwlock_release_read(struct rwlock *);
-void rwlock_acquire_write(struct rwlock *);
-void rwlock_release_write(struct rwlock *);
+void rwlock_acquire_read(struct rwlock *rwlock);
+void rwlock_release_read(struct rwlock *rwlock);
+void rwlock_acquire_write(struct rwlock *rwlock);
+void rwlock_release_write(struct rwlock *rwlock);
 
 #endif /* _SYNCH_H_ */

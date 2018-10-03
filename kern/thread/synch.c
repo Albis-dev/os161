@@ -338,3 +338,134 @@ cv_broadcast(struct cv *cv, struct lock *lock)
 	spinlock_release(&cv->cv_lock);
 	KASSERT(!spinlock_do_i_hold(&cv->cv_lock));	
 }
+
+////////////////////////////////////////////////////////////
+//
+// RW-lock
+// Source : https://arxiv.org/pdf/1309.4507.pdf
+struct rwlock *
+rwlock_create(const char *name)
+{
+	struct rwlock *rwlock;
+
+	// malloc for struct
+	rwlock = kmalloc(sizeof(*rwlock));
+	if (rwlock == NULL) {
+		return NULL;
+	}
+
+	// assign name
+	rwlock->rwlock_name = kstrdup(name);
+	if (rwlock->rwlock_name==NULL) {
+		kfree(rwlock);
+		return NULL;
+	}
+
+	// init semaphores (in, out, wrt)
+	rwlock->in = sem_create("in", 1);
+	if (rwlock->in == NULL) {
+		kfree(rwlock->rwlock_name);
+		kfree(rwlock);
+		return NULL;
+	}
+
+	rwlock->out = sem_create("out", 1);
+	if (rwlock->out == NULL) {
+		kfree(rwlock->rwlock_name);
+		kfree(rwlock);
+		sem_destroy(rwlock->in);
+		return NULL;
+	}
+
+	rwlock->wrt = sem_create("wrt", 0);
+	if (rwlock->wrt == NULL) {
+		kfree(rwlock->rwlock_name);
+		kfree(rwlock);
+		sem_destroy(rwlock->in);
+		sem_destroy(rwlock->out);
+		return NULL;
+	}
+
+	rwlock->isWriterWaiting = false;
+	rwlock->ctrin = 0;
+	rwlock->ctrout = 0;
+
+	return rwlock;
+}
+void rwlock_destroy(struct rwlock *rwlock)
+{
+	sem_destroy(rwlock->in);
+	sem_destroy(rwlock->out);
+	sem_destroy(rwlock->wrt);
+	kfree(rwlock->rwlock_name);
+	kfree(rwlock);
+}
+
+void rwlock_acquire_read(struct rwlock *rwlock)
+{	
+	int old_p_level;
+	old_p_level = splhigh();
+
+	// Wait in
+	P(rwlock->in);
+	// ctrin++
+	rwlock->ctrin++;
+	// Signal in
+	V(rwlock->in);
+
+	splx(old_p_level);
+}
+void rwlock_release_read(struct rwlock *rwlock)
+{
+	int old_p_level;
+	old_p_level = splhigh();
+
+	// Wait out
+	P(rwlock->out);
+	// ctrout++
+	rwlock->ctrout++;
+	// if (wait==1 && ctrin == ctrout)
+	// then Signal wrt
+	if (rwlock->isWriterWaiting && (rwlock->ctrin == rwlock->ctrout)){
+		V(rwlock->wrt);
+	}
+	// Sig out
+	V(rwlock->out);
+
+	splx(old_p_level);
+}
+void rwlock_acquire_write(struct rwlock *rwlock)
+{
+	int old_p_level;
+	old_p_level = splhigh();
+	
+	// Wait in
+	P(rwlock->in);
+	// Wait out
+	P(rwlock->out);
+	// if (ctrin==ctrout)
+	// then Sig out
+	// else
+	//		wait=1
+	//		Sig out
+	// 		Wait wrt
+	// 		wait=0
+	if (rwlock->ctrin == rwlock->ctrout) {
+		V(rwlock->out);
+	}
+	else {
+		rwlock->isWriterWaiting = true;
+		V(rwlock->out);
+		P(rwlock->wrt);
+		rwlock->isWriterWaiting = false;
+	}
+	splx(old_p_level);
+}
+void rwlock_release_write(struct rwlock *rwlock)
+{
+	int old_p_level;
+	old_p_level = splhigh();
+	// Sig in
+	V(rwlock->in);
+	splx(old_p_level);
+}
