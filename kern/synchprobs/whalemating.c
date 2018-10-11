@@ -40,11 +40,34 @@
 #include <test.h>
 #include <synch.h>
 
+// counter for each role
+static volatile int male_count;
+static volatile int female_count;
+static volatile int matchmaker_count;
+
+// general purpose lock
+static struct lock *lock = NULL;
+// use this cv to wake things up when the match is ready
+static struct cv *male_lobby = NULL;
+static struct cv *female_lobby = NULL;
+static struct cv *matchmaker_lobby = NULL;
+
 /*
  * Called by the driver during initialization.
  */
 
 void whalemating_init() {
+	// counter
+	male_count = 0;
+	female_count = 0;
+	matchmaker_count = 0;
+	// gerneral purpose lock
+	lock = lock_create("lock");
+	// cv for each role
+	male_lobby = cv_create("male_lobby");
+	female_lobby = cv_create("female_lobby");
+	matchmaker_lobby = cv_create("matchmaker_lobby");
+
 	return;
 }
 
@@ -54,6 +77,16 @@ void whalemating_init() {
 
 void
 whalemating_cleanup() {
+	lock_destroy(lock);
+	lock = NULL;
+
+	cv_destroy(male_lobby);
+	male_lobby = NULL;
+	cv_destroy(female_lobby);
+	female_lobby = NULL;
+	cv_destroy(matchmaker_lobby);
+	matchmaker_lobby = NULL;
+
 	return;
 }
 
@@ -65,6 +98,26 @@ male(uint32_t index)
 	 * Implement this function by calling male_start and male_end when
 	 * appropriate.
 	 */
+	male_start(index);
+
+	lock_acquire(lock);
+	male_count++; // new male whale has arrived!
+	// let me see if other whales are ready to play.
+	if (female_count > 0 && matchmaker_count > 0) {
+		// seems like they're waiting for you!
+		cv_signal(female_lobby, lock);
+		cv_signal(matchmaker_lobby, lock);
+	}
+	else {
+		// seems like they're not here yet...
+		cv_wait(male_lobby, lock); // please wait for a bit
+	}
+	male_count--; // bye!
+	lock_release(lock);
+
+	// and have fun
+	male_end(index);
+
 	return;
 }
 
@@ -76,6 +129,26 @@ female(uint32_t index)
 	 * Implement this function by calling female_start and female_end when
 	 * appropriate.
 	 */
+	female_start(index);
+
+	lock_acquire(lock);
+	female_count++; // new female whale has arrived!
+	// let me see if other whales are ready to play.
+	if (male_count > 0 && matchmaker_count > 0) {
+		// seems like they're waiting for you!
+		cv_signal(male_lobby, lock);
+		cv_signal(matchmaker_lobby, lock);
+	}
+	else {
+		// seems like they're not here yet...
+		cv_wait(female_lobby, lock); // please wait for a bit
+	}
+	female_count--; // bye!
+	lock_release(lock);
+
+	// and have fun
+	female_end(index);
+
 	return;
 }
 
@@ -87,5 +160,25 @@ matchmaker(uint32_t index)
 	 * Implement this function by calling matchmaker_start and matchmaker_end
 	 * when appropriate.
 	 */
+	matchmaker_start(index);
+
+	lock_acquire(lock);
+	matchmaker_count++; // new matchmaker whale has arrived!
+	// let me see if other whales are ready to play.
+	if (male_count > 0 && female_count > 0) {
+		// seems like they're waiting for you!
+		cv_signal(male_lobby, lock);
+		cv_signal(female_lobby, lock);
+	}
+	else {
+		// seems like they're not here yet...
+		cv_wait(matchmaker_lobby, lock); // please wait for a bit
+	}
+	matchmaker_count--; // bye!
+	lock_release(lock);
+
+	// and have fun
+	matchmaker_end(index);
+
 	return;
 }
