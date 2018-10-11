@@ -50,6 +50,11 @@
 #include "opt-automationtest.h"
 
 /*
+ * Syncronization primitives for menu() loop.
+ */
+static struct lock *lock_menu = NULL;
+
+/*
  * In-kernel menu and command dispatcher.
  */
 
@@ -890,6 +895,7 @@ menu_execute(char *line, int isargs)
 			}
 		}
 	}
+	lock_release(lock_menu);
 }
 
 /*
@@ -913,16 +919,21 @@ void
 menu(char *args)
 {
 	char buf[64];
+	lock_menu = lock_create("lock_menu");
 
+	lock_acquire(lock_menu);
 	menu_execute(args, 1);
-
+	
 	while (1) {
 		/*
 		 * Defined in overwrite.h. If you want to change the kernel prompt, please
 		 * do it in that file. Otherwise automated test testing will break.
 		 */
+		lock_acquire(lock_menu);
 		kprintf(KERNEL_PROMPT);
 		kgets(buf, sizeof(buf));
 		menu_execute(buf, 0);
+		lock_acquire(lock_menu);
+		lock_release(lock_menu);
 	}
 }
