@@ -48,6 +48,7 @@
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
+#include <synch.h>addrspace
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -63,10 +64,16 @@ proc_create(const char *name)
 {
 	struct proc *proc;
 
-	proc = kmalloc(sizeof(*proc));
+	// allocate proc struct AND fileTable[MAXFTENTRY] array
+	proc = kmalloc(sizeof(*proc) + sizeof(struct fileHandle)*MAXFTENTRY);
 	if (proc == NULL) {
 		return NULL;
 	}
+
+	for (int i=0; i<MAXFTENTRY; i++) {
+		proc->fileTable[i] = NULL;
+	}
+
 	proc->p_name = kstrdup(name);
 	if (proc->p_name == NULL) {
 		kfree(proc);
@@ -317,4 +324,31 @@ proc_setas(struct addrspace *newas)
 	proc->p_addrspace = newas;
 	spinlock_release(&proc->p_lock);
 	return oldas;
+}
+
+struct fileHandle *
+fh_create()
+{
+	struct fileHandle *fh;
+	fh = kmalloc(sizeof(*fh));
+	if (fh == NULL) {
+		return NULL;
+	}
+
+	fh->fh_lock = lock_create("fh_lock");
+	if (fh->fh_lock == NULL) {
+		kfree(fh);
+		return NULL;
+	}
+
+	fh->fh_vnode = NULL;
+	fh->fh_uio = NULL;
+
+	return fh;
+}
+
+void fh_destroy(struct fileHandle *fh)
+{
+	lock_destroy(fh->fh_lock);
+	kfree(fh);
 }

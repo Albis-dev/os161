@@ -30,6 +30,11 @@
 #ifndef _PROC_H_
 #define _PROC_H_
 
+#define MAXFTENTRY 16
+#define STDIN 0 
+#define STDOUT 1
+#define STDERR 2
+
 /*
  * Definition of a process.
  *
@@ -71,7 +76,20 @@ struct proc {
 	struct vnode *p_cwd;		/* current working directory */
 
 	/* add more material here as needed */
+
+	/* File Table */
+	struct fileHandle *fileTable[];
 };
+
+struct fileHandle {
+	struct vnode *fh_vnode; /* abstract structure for an on-disk file (vnode.h) */
+	struct uio *fh_uio; /* kernel or userspace I/O buffer (uio.h) */
+
+	struct lock *fh_lock; /* for forked processes */
+};
+
+struct fileHandle * fh_create(void);
+void fh_destroy(struct fileHandle*);
 
 /* This is the process structure for the kernel and for kernel-only threads. */
 extern struct proc *kproc;
