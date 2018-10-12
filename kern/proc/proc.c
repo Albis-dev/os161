@@ -49,6 +49,8 @@
 #include <addrspace.h>
 #include <vnode.h>
 #include <synch.h>
+#include <vfs.h>
+#include <kern/fcntl.h>
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -70,6 +72,7 @@ proc_create(const char *name)
 		return NULL;
 	}
 
+	// initialize array
 	for (int i=0; i<MAXFTENTRY; i++) {
 		proc->fileTable[i] = NULL;
 	}
@@ -224,6 +227,26 @@ proc_create_runprogram(const char *name)
 		newproc->p_cwd = curproc->p_cwd;
 	}
 	spinlock_release(&curproc->p_lock);
+
+	struct fileHandle *console;
+	console = fh_create();
+	if (console == NULL) {
+		proc_destroy(newproc);
+		return NULL;
+	}
+	
+	int result;
+
+	result = vfs_open((char *)"con:", O_RDWR, 0, &console->fh_vnode);
+	if (result) {
+		fh_destroy(console);
+		proc_destroy(newproc);
+		return NULL;
+	}
+
+	newproc->fileTable[STDIN] = console;
+	newproc->fileTable[STDOUT] = console;
+	newproc->fileTable[STDERR] = console;
 
 	return newproc;
 }
