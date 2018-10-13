@@ -27,7 +27,7 @@ sys_open(const char *filename, int flags) {
     result = vfs_open(filename, flags, 0, &fh->vnode);
 	if (result) {
         // failed to open
-		return result;
+		return -1;
 	}
 
     int fd = 0; // A file descriptor
