@@ -1,0 +1,1 @@
+int sys_open(const char *, int);

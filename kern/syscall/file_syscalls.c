@@ -1,5 +1,5 @@
-#include <unistd.h>
-#include <fcntl.h>
+#include <kern/unistd.h>
+#include <kern/fcntl.h>
 #include <vfs.h>
 #include <proc.h>
 #include <current.h>
