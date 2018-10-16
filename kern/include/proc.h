@@ -83,7 +83,9 @@ struct proc {
 
 struct fileHandle {
 	struct vnode *fh_vnode; /* abstract structure for an on-disk file (vnode.h) */
-	struct uio *fh_uio; /* kernel or userspace I/O buffer (uio.h) */
+
+	int fh_accmode; /* indicates whether it's read/write/read&write */
+	off_t fh_offset; /* file offset */
 
 	struct lock *fh_lock; /* for forked processes */
 };

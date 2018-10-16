@@ -243,6 +243,7 @@ proc_create_runprogram(const char *name)
 		proc_destroy(newproc);
 		return NULL;
 	}
+    console->fh_accmode = O_RDWR;
 
 	newproc->fileTable[STDIN] = console;
 	newproc->fileTable[STDOUT] = console;
@@ -365,7 +366,7 @@ fh_create()
 	}
 
 	fh->fh_vnode = NULL;
-	fh->fh_uio = NULL;
+	fh->fh_offset = 0;
 
 	return fh;
 }

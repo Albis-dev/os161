@@ -1,13 +1,24 @@
-#include <types.h>
-#include <kern/unistd.h>
-#include <kern/fcntl.h>
-#include <vfs.h>
-#include <vnode.h>
-#include <proc.h>
-#include <current.h>
-#include <synch.h>
+/*
+ * File System Calls
+ * 
+ * Don't forget to dispatch using system call dispatcher.
+ * (arch/mips/syscall/syscall.c)
+ * 
+ */
 
 #include <file_syscalls.h>
+
+#include <current.h>
+#include <copyinout.h>
+#include <kern/unistd.h>
+#include <kern/fcntl.h>
+#include <kern/errno.h>
+#include <proc.h>
+#include <synch.h>
+#include <types.h>
+#include <uio.h>
+#include <vfs.h>
+#include <vnode.h>
 
 /*
  * Opens a file.
@@ -36,6 +47,9 @@ sys_open(char *filename, int flags, int32_t *retval) {
         // failed to open
         return result;
 	}
+
+    // access mode
+    fh->fh_accmode = flags & O_ACCMODE;
 
     int fd = 0; // A file descriptor
 
@@ -93,9 +107,9 @@ sys_close(int fd) {
     if (fh->fh_vnode->vn_refcount == 0) {
         lock_release(fh->fh_lock);
         fh_destroy(fh);
+    } else {
+        lock_release(fh->fh_lock);
     }
-
-    lock_release(fh->fh_lock);
 
     return 0; 
 }
@@ -107,3 +121,58 @@ sys_close(int fd) {
  * 
  * Return Value : Non-negative integer upon success. 1 upon error.
  */ 
+int
+sys_write(int fd, const void *buf, size_t buflen) {
+    /*
+     * EBADF 	fd is not a valid file descriptor, or was not opened for writing.
+     * EFAULT 	Part or all of the address space pointed to by buf is invalid.
+     * ENOSPC 	There is no free space remaining on the filesystem containing the file.
+     * EIO 	A hardware I/O error occurred writing the data.
+     */
+
+    // load current process
+    KASSERT(curproc != NULL);
+    struct proc *proc = curproc;
+    KASSERT(proc != NULL);
+
+    // EBADF check section
+    struct fileHandle *fh;
+
+    spinlock_acquire(&proc->p_lock);
+    fh = proc->fileTable[fd];
+    spinlock_release(&proc->p_lock);
+
+    lock_acquire(fh->fh_lock);
+
+    if (fh == NULL) {
+        /* invalid fd */
+        return EBADF;
+    } else if (fh->fh_accmode == O_RDONLY) {
+        /* incorrect access mode */
+        return EBADF;
+    } else if (fh->fh_vnode == NULL) {
+        /* haven't initialized */
+        return EBADF;
+    }
+
+    int result;
+
+    // Initialize uio structure
+    struct iovec iov;
+    struct uio myuio;
+
+    uio_kinit(&iov, &myuio, (void *)buf, buflen, fh->fh_offset, UIO_READ);
+
+    // write to file
+    result = VOP_WRITE(fh->fh_vnode, &myuio);
+    // update the offset whether the operation failed or not.
+    fh->fh_offset = myuio.uio_offset;
+    if (result) {
+        // seek failed or IO failed
+        return result;
+    }
+
+    lock_release(fh->fh_lock);
+
+    return 0;
+}
