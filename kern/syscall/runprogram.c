@@ -97,6 +97,50 @@ runprogram(char *progname)
 		return result;
 	}
 
+	struct fileHandle *stdin = NULL;
+	struct fileHandle *stdout = NULL;
+	struct fileHandle *stderr = NULL;
+
+	stdin = fh_create();
+	stdout = fh_create();
+	stderr = fh_create();
+
+	if (stdin == NULL) {
+		panic("File handle creation failed!");
+	}
+	KASSERT(stdout != NULL && stderr != NULL);
+
+	char con1[] = "con:";
+	
+	result = vfs_open(con1, O_RDONLY, 0664, &stdin->fh_vnode);
+	if (result) {
+		return result;
+	}
+
+	char con2[] = "con:";
+
+	result = vfs_open(con2, O_WRONLY, 0664, &stdout->fh_vnode);
+	if (result) {
+		panic("console fail");
+		return result;
+	}
+
+	char con3[] = "con:";
+
+	result = vfs_open(con3, O_WRONLY, 0664, &stderr->fh_vnode);
+	if (result) {
+		panic("console fail");
+		return result;
+	}
+
+	stdin->fh_accmode = O_RDONLY;
+	stdout->fh_accmode = O_WRONLY;
+	stderr->fh_accmode = O_WRONLY;
+	
+	curproc->fileTable[STDIN] = stdin;
+	curproc->fileTable[STDOUT] = stdout;
+	curproc->fileTable[STDERR] = stderr;
+
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  NULL /*userspace addr of environment*/,

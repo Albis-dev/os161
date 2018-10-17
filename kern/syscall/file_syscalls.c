@@ -122,7 +122,7 @@ sys_close(int fd) {
  * Return Value : Non-negative integer upon success. 1 upon error.
  */ 
 int
-sys_write(int fd, const void *buf, size_t buflen) {
+sys_write(int fd, void *buf, size_t buflen) {
     /*
      * EBADF 	fd is not a valid file descriptor, or was not opened for writing.
      * EFAULT 	Part or all of the address space pointed to by buf is invalid.
@@ -161,7 +161,9 @@ sys_write(int fd, const void *buf, size_t buflen) {
     struct iovec iov;
     struct uio myuio;
 
-    uio_kinit(&iov, &myuio, (void *)buf, buflen, fh->fh_offset, UIO_READ);
+    uio_kinit(&iov, &myuio, (void *)buf, buflen, fh->fh_offset, UIO_WRITE);
+    myuio.uio_segflg = UIO_USERSPACE;
+    myuio.uio_space = proc_getas();
 
     // write to file
     result = VOP_WRITE(fh->fh_vnode, &myuio);

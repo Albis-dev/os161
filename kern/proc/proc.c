@@ -220,7 +220,6 @@ proc_create_runprogram(const char *name)
 	newproc->p_addrspace = NULL;
 
 	/* VFS fields */
-
 	/*
 	 * Lock the current process to copy its current directory.
 	 * (We don't need to lock the new process, though, as we have
@@ -232,31 +231,6 @@ proc_create_runprogram(const char *name)
 		newproc->p_cwd = curproc->p_cwd;
 	}
 	spinlock_release(&curproc->p_lock);
-
-	// if this is the first time opening console file
-	if (console == NULL) {
-		// do the things
-		console = fh_create();
-		if (console == NULL) {
-			proc_destroy(newproc);
-			return NULL;
-		}
-		
-		int result;
-
-		result = vfs_open((char *)"con:", O_RDWR, 0, &console->fh_vnode);
-		if (result) {
-			fh_destroy(console);
-			proc_destroy(newproc);
-			return NULL;
-		}
-
-		console->fh_accmode = O_RDWR;
-	}
-	
-	newproc->fileTable[STDIN] = console;
-	newproc->fileTable[STDOUT] = console;
-	newproc->fileTable[STDERR] = console;
 
 	return newproc;
 }
