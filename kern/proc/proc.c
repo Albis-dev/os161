@@ -58,6 +58,11 @@
 struct proc *kproc;
 
 /*
+ * Console file handle
+ */ 
+struct fileHandle *console = NULL;
+
+/*
  * Create a proc structure.
  */
 static
@@ -228,23 +233,27 @@ proc_create_runprogram(const char *name)
 	}
 	spinlock_release(&curproc->p_lock);
 
-	struct fileHandle *console;
-	console = fh_create();
+	// if this is the first time opening console file
 	if (console == NULL) {
-		proc_destroy(newproc);
-		return NULL;
+		// do the things
+		console = fh_create();
+		if (console == NULL) {
+			proc_destroy(newproc);
+			return NULL;
+		}
+		
+		int result;
+
+		result = vfs_open((char *)"con:", O_RDWR, 0, &console->fh_vnode);
+		if (result) {
+			fh_destroy(console);
+			proc_destroy(newproc);
+			return NULL;
+		}
+
+		console->fh_accmode = O_RDWR;
 	}
 	
-	int result;
-
-	result = vfs_open((char *)"con:", O_RDWR, 0, &console->fh_vnode);
-	if (result) {
-		fh_destroy(console);
-		proc_destroy(newproc);
-		return NULL;
-	}
-    console->fh_accmode = O_RDWR;
-
 	newproc->fileTable[STDIN] = console;
 	newproc->fileTable[STDOUT] = console;
 	newproc->fileTable[STDERR] = console;
