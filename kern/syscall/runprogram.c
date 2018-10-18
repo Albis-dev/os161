@@ -110,27 +110,28 @@ runprogram(char *progname)
 	}
 	KASSERT(stdout != NULL && stderr != NULL);
 
+	/* 
+	 * "Because lookup may destroy pathnames, these all may too."
+     * - from vfs.h
+	 */
 	char con1[] = "con:";
-	
-	result = vfs_open(con1, O_RDONLY, 0664, &stdin->fh_vnode);
-	if (result) {
-		return result;
-	}
-
 	char con2[] = "con:";
-
-	result = vfs_open(con2, O_WRONLY, 0664, &stdout->fh_vnode);
-	if (result) {
-		panic("console fail");
-		return result;
-	}
-
 	char con3[] = "con:";
 
-	result = vfs_open(con3, O_WRONLY, 0664, &stderr->fh_vnode);
+	// leave the "mode" argument to be 0 because we don't need to support that
+	result = vfs_open(con1, O_RDONLY, 0, &stdin->fh_vnode);
 	if (result) {
-		panic("console fail");
-		return result;
+		panic("Failed to open console.");
+	}
+
+	result = vfs_open(con2, O_WRONLY, 0, &stdout->fh_vnode);
+	if (result) {
+		panic("Failed to open console.");
+	}
+
+	result = vfs_open(con3, O_WRONLY, 0, &stderr->fh_vnode);
+	if (result) {
+		panic("Failed to open console.");
 	}
 
 	stdin->fh_accmode = O_RDONLY;

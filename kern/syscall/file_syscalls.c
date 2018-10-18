@@ -169,9 +169,11 @@ sys_write(int fd, void *buf, size_t buflen) {
     result = VOP_WRITE(fh->fh_vnode, &myuio);
     // update the offset whether the operation failed or not.
     fh->fh_offset = myuio.uio_offset;
+
     lock_release(fh->fh_lock);
+
     if (result) {
-        // seek failed or IO failed
+        // seek failed or IO failed (mostly EFAULT)
         return result;
     }
 
