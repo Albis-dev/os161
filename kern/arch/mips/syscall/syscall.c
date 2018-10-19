@@ -36,6 +36,7 @@
 #include <current.h>
 #include <syscall.h>
 #include <file_syscalls.h>
+#include <copyinout.h>
 
 
 /*
@@ -82,6 +83,15 @@ syscall(struct trapframe *tf)
 	int callno;
 	int32_t retval;
 	int err;
+	int result; // for sanity check
+
+	int64_t retval64; // os161 uses hign/low endianess
+	int32_t retval_high;
+	int32_t retval_low;
+
+	// lseek
+	int32_t whence;
+	off_t pos;
 
 	KASSERT(curthread != NULL);
 	KASSERT(curthread->t_curspl == 0);
@@ -115,12 +125,28 @@ syscall(struct trapframe *tf)
 		err = sys_open((char *)tf->tf_a0, (int)tf->tf_a1, &retval);
 		break;
 
-		case SYS_close:
+		case SYS_close: 	
 		err = sys_close((int)tf->tf_a0);
 		break;
 
 		case SYS_write:
-		err = sys_write((int)tf->tf_a0, (void *)tf->tf_a1, (size_t)tf->tf_a2);
+		err = sys_write((int)tf->tf_a0, (void *)tf->tf_a1, (size_t)tf->tf_a2, &retval);
+		break;
+
+		case SYS_lseek:
+		result = copyin((const_userptr_t)tf->tf_sp + 16, &whence, sizeof(int32_t));
+		if (result) {
+			kprintf("error : %d\n", result);
+			panic("NOT WORKING");
+		}
+		pos = ((off_t)tf->tf_a2 << 32) + (off_t)tf->tf_a3;
+		err = sys_lseek((int)tf->tf_a0, (off_t)pos, (int)whence, &retval64);
+		if (err == 0) {
+			retval_high = retval64 >> 32;
+			retval_low = (int32_t) retval64;
+			retval = retval_high;
+			tf->tf_v1 = retval_low;
+		}
 		break;
 
 	    default:

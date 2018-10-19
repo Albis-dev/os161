@@ -13,6 +13,8 @@
 #include <kern/unistd.h>
 #include <kern/fcntl.h>
 #include <kern/errno.h>
+#include <kern/stat.h>
+#include <kern/seek.h>
 #include <proc.h>
 #include <synch.h>
 #include <types.h>
@@ -122,7 +124,8 @@ sys_close(int fd) {
  * Return Value : Non-negative integer upon success. 1 upon error.
  */ 
 int
-sys_write(int fd, void *buf, size_t buflen) {
+sys_write(int fd, void *buf, size_t buflen, ssize_t *retval)
+{
     /*
      * EBADF 	fd is not a valid file descriptor, or was not opened for writing.
      * EFAULT 	Part or all of the address space pointed to by buf is invalid.
@@ -168,14 +171,79 @@ sys_write(int fd, void *buf, size_t buflen) {
     // write to file
     result = VOP_WRITE(fh->fh_vnode, &myuio);
     // update the offset whether the operation failed or not.
+    *retval = myuio.uio_offset - fh->fh_offset;
     fh->fh_offset = myuio.uio_offset;
-
     lock_release(fh->fh_lock);
 
     if (result) {
         // seek failed or IO failed (mostly EFAULT)
         return result;
     }
+    return 0;
+}
+
+int sys_lseek (int fd, off_t pos, int whence, off_t *retval)
+{   
+    int result;
+
+    // load current process
+    KASSERT(curproc != NULL);
+    struct proc *proc = curproc;
+    KASSERT(proc != NULL);
+
+    struct fileHandle *fh;
+
+    spinlock_acquire(&proc->p_lock);
+    fh = proc->fileTable[fd];
+    spinlock_release(&proc->p_lock);
+
+    // sanity checks
+    if (fh == NULL) {
+        /* Invalid fd */
+        return EBADF;
+    } else if (!((whence == SEEK_SET) ||
+                 (whence == SEEK_CUR) ||
+                 (whence == SEEK_END))) {
+        /* Invalid argument */
+        return ESPIPE;
+    } else if (pos < 0) {
+        return EINVAL;
+    } else {
+        lock_acquire(fh->fh_lock);
+
+        KASSERT(fh->fh_vnode != NULL);
+        KASSERT(lock_do_i_hold(fh->fh_lock));
+        result = VOP_ISSEEKABLE(fh->fh_vnode);
+        if (result == 0) {
+            /* Non-seekable file */
+            lock_release(fh->fh_lock);
+            return ESPIPE;
+        }
+    }   
+
+    KASSERT(lock_do_i_hold(fh->fh_lock));
+
+    if (whence == SEEK_SET) {
+        fh->fh_offset = pos;
+    } else if (whence == SEEK_CUR) {
+        fh->fh_offset += pos;
+    } else if (whence == SEEK_END) {
+        struct stat filestat;
+
+        result = VOP_STAT(fh->fh_vnode, &filestat);
+        if (result) {
+            /* Can't check filesize */
+            return result;
+        }
+
+        fh->fh_offset = filestat.st_size + pos;
+    }
+
+    *retval = fh->fh_offset;
+
+    lock_release(fh->fh_lock);
+    KASSERT(!lock_do_i_hold(fh->fh_lock));
+
 
     return 0;
 }
