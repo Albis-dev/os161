@@ -42,6 +42,7 @@
  */
 
 #include <spinlock.h>
+#include <limits.h>
 
 struct addrspace;
 struct thread;
@@ -65,17 +66,23 @@ struct vnode;
  * without sleeping.
  */
 struct proc {
+	/* etc */
 	char *p_name;			/* Name of this process */
-	struct spinlock p_lock;		/* Lock for this structure */
+	struct spinlock p_lock;		/* Spinlock for this structure */
 	unsigned p_numthreads;		/* Number of threads in this process */
 
 	/* VM */
-	struct addrspace *p_addrspace;	/* virtual address space */
+	struct addrspace *p_addrspace;	/* Virtual address space */
 
 	/* VFS */
-	struct vnode *p_cwd;		/* current working directory */
+	struct vnode *p_cwd;		/* Current working directory */
 
-	/* add more material here as needed */
+	/* Process ID */
+	pid_t pid;					/* ID of this process */
+	pid_t p_pid;				/* ID of the parent process 
+								   if parent doesn't exist, then 0 */
+	/* Process Table */
+	struct proc *(*procTable)[PID_MAX]; /* A pointer to array of pointers to processes */
 
 	/* File Table */
 	struct fileHandle *fileTable[];

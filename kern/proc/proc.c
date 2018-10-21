@@ -45,6 +45,7 @@
 #include <types.h>
 #include <spl.h>
 #include <proc.h>
+#include <limits.h>
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
@@ -63,6 +64,11 @@ struct proc *kproc;
 struct fileHandle *console = NULL;
 
 /*
+ * Process ID Table
+ */ 
+struct proc * procTable[PID_MAX] = { NULL };
+
+/*
  * Create a proc structure.
  */
 static
@@ -71,23 +77,23 @@ proc_create(const char *name)
 {
 	struct proc *proc;
 
-	// allocate proc struct AND fileTable[MAXFTENTRY] array
+	// allocate a proc struct and an array fileTable[MAXFTENTRY]
 	proc = kmalloc(sizeof(*proc) + sizeof(struct fileHandle)*MAXFTENTRY);
 	if (proc == NULL) {
 		return NULL;
 	}
 
-	// initialize array
+	/* File Table */
 	for (int i=0; i<MAXFTENTRY; i++) {
 		proc->fileTable[i] = NULL;
 	}
 
+	/* etc */
 	proc->p_name = kstrdup(name);
 	if (proc->p_name == NULL) {
 		kfree(proc);
 		return NULL;
 	}
-
 	proc->p_numthreads = 0;
 	spinlock_init(&proc->p_lock);
 
@@ -96,6 +102,25 @@ proc_create(const char *name)
 
 	/* VFS fields */
 	proc->p_cwd = NULL;
+
+	/* Process ID */
+	proc->pid = -1;
+	proc->p_pid = -1;
+
+	// find usable pid
+	for (int i=PID_MIN; i<PID_MAX; i++) {
+		if (procTable[i] == NULL) {
+			proc->pid = i;
+		}
+	}
+	if (proc->pid < PID_MIN) {
+		panic("Process Table is full!");
+	}
+	// assign current proc to the process table 
+	KASSERT(procTable[proc->pid] == NULL);
+	procTable[proc->pid] = proc;
+	// let current proc know where to inquire about pid 
+	proc->procTable = &procTable;
 
 	return proc;
 }
