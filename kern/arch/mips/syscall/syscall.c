@@ -36,6 +36,7 @@
 #include <current.h>
 #include <syscall.h>
 #include <file_syscalls.h>
+#include <proc_syscalls.h>
 #include <copyinout.h>
 
 
