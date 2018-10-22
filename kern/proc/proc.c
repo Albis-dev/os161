@@ -71,7 +71,6 @@ struct proc * procTable[PID_MAX] = { NULL };
 /*
  * Create a proc structure.
  */
-static
 struct proc *
 proc_create(const char *name)
 {
@@ -111,6 +110,7 @@ proc_create(const char *name)
 	for (int i=PID_MIN; i<PID_MAX; i++) {
 		if (procTable[i] == NULL) {
 			proc->pid = i;
+			break;
 		}
 	}
 	if (proc->pid < PID_MIN) {

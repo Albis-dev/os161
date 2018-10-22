@@ -97,7 +97,10 @@ struct fileHandle {
 	struct lock *fh_lock; /* for forked processes */
 };
 
+/* Create a file handle */
 struct fileHandle * fh_create(void);
+
+/* Destroy a file handle */
 void fh_destroy(struct fileHandle*);
 
 /* This is the process structure for the kernel and for kernel-only threads. */
@@ -108,6 +111,9 @@ void proc_bootstrap(void);
 
 /* Create a fresh process for use by runprogram(). */
 struct proc *proc_create_runprogram(const char *name);
+
+/* Create a process. Once was a static function. */
+struct proc *proc_create(const char *name);
 
 /* Destroy a process. */
 void proc_destroy(struct proc *proc);
