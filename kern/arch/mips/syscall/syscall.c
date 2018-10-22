@@ -89,6 +89,9 @@ syscall(struct trapframe *tf)
 	int64_t retval64; // os161 uses hign/low endianess
 	int32_t retval_high;
 	int32_t retval_low;
+	
+	// fork
+	struct trapframe *tf_backup = NULL;
 
 	// lseek
 	int32_t whence;
@@ -150,12 +153,22 @@ syscall(struct trapframe *tf)
 		}
 		break;
 
+		case SYS_fork:
+		// save trapframe on the kernel heap
+		tf_backup = kmalloc(sizeof(*tf));
+		tf_backup = memcpy(tf_backup, tf, sizeof(*tf));
+		err = sys_fork(tf_backup, &retval);
+		break;
+
+		case SYS_getpid:
+		err = sys_getpid(&retval);
+		break;
+
 	    default:
 		kprintf("Unknown syscall %d\n", callno);
 		err = ENOSYS;
 		break;
 	}
-
 
 	if (err) {
 		/*
@@ -194,7 +207,22 @@ syscall(struct trapframe *tf)
  * Thus, you can trash it and do things another way if you prefer.
  */
 void
-enter_forked_process(struct trapframe *tf)
+enter_forked_process(void *parent_tf, long unsigned int num)
 {
-	(void)tf;
+	(void)num;
+
+    // load current process
+    KASSERT(curproc != NULL);
+    struct proc *proc = curproc;
+    KASSERT(proc != NULL);
+
+	struct trapframe tf;
+	// initialize 
+	bzero(&tf, sizeof(tf));
+	// make the trapframe to be on the stack
+	memcpy(&tf, (struct trapframe *)parent_tf, sizeof(*(struct trapframe *)parent_tf));
+	tf.tf_v0 = 0;
+	tf.tf_a3 = 0;
+
+	mips_usermode(&tf);
 }
