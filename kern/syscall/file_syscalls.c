@@ -28,7 +28,7 @@
  * Using vfs_open(), populate the file handle structure and assign
  * a process-specific file descriptor to it.
  * 
- * Return Value : Non-negative integer upon success. 1 upon error.
+ * Return Value : Non-negative integer upon success.
  */ 
 int
 sys_open(char *filename, int flags, int32_t *retval) {
@@ -121,7 +121,7 @@ sys_close(int fd) {
  * 
  * Using VOP_WRITE() macro, initialize uio using uio_kinit() (see uio.h) and execute.
  * 
- * Return Value : Non-negative integer upon success. 1 upon error.
+ * Return Value : Non-negative integer upon success.
  */ 
 int
 sys_write(int fd, void *buf, size_t buflen, ssize_t *retval)
