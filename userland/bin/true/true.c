@@ -29,6 +29,8 @@
 
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdio.h>
+
 
 /*
  * true - succeed.
@@ -37,6 +39,21 @@
 int
 main(void)
 {
-	/* Just exit with success. */
-	exit(0);
+
+	int pid;
+	int p_pid;
+
+	p_pid = getpid();
+
+	fork();
+
+	pid = getpid();
+
+	if (pid == p_pid) {
+		printf("?\n");
+	} else {
+		printf("!\n");
+	}
+
+	return 0;
 }
