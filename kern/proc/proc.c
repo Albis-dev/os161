@@ -109,21 +109,12 @@ proc_create(const char *name)
 	/* Exit code */
 	proc->exitcode = -1;
 
-	// find usable pid
-	for (int i=PID_MIN; i<PID_MAX; i++) {
-		if (procTable[i] == NULL) {
-			proc->pid = i;
-			break;
-		}
-	}
-	if (proc->pid < PID_MIN) {
-		panic("Process Table is full!");
-	}
-	// assign current proc to the process table 
-	KASSERT(procTable[proc->pid] == NULL);
-	procTable[proc->pid] = proc;
-	// let current proc know where to inquire about pid 
-	proc->procTable = &procTable;
+	/* Register to the process table */
+	proc_register(proc);
+
+	/* lock and cv */
+	proc->lock_cv = lock_create("lock_cv");
+	proc->cv_exit = cv_create("exit");
 
 	return proc;
 }
@@ -210,6 +201,10 @@ proc_destroy(struct proc *proc)
 
 	KASSERT(proc->p_numthreads == 0);
 	spinlock_cleanup(&proc->p_lock);
+
+	/* lock and cv */
+	lock_destroy(proc->lock_cv);
+	cv_destroy(proc->cv_exit);
 
 	kfree(proc->p_name);
 	kfree(proc);
@@ -386,4 +381,41 @@ void fh_destroy(struct fileHandle *fh)
 {
 	lock_destroy(fh->fh_lock);
 	kfree(fh);
+}
+
+/*
+ * Register the newly created process to the process table.
+ */
+void
+proc_register(struct proc *newproc) 
+{
+	KASSERT(newproc != NULL);
+	// find usable pid
+	for (int i=PID_MIN; i<PID_MAX; i++) {
+		if (procTable[i] == NULL) {
+			newproc->pid = i;
+			break;
+		}
+	}
+
+	if (newproc->pid < PID_MIN) {
+		panic("Process Table is full!");
+	}
+
+	// assign current proc to the process table 
+	KASSERT(procTable[newproc->pid] == NULL);
+	procTable[newproc->pid] = newproc;
+}
+
+void
+proc_deregister(struct proc *proc)
+{
+	KASSERT(proc != NULL);
+	KASSERT(procTable[proc->pid] == proc);
+	procTable[proc->pid] = NULL;
+}
+
+struct proc *
+proc_fetch(pid_t pid) {
+	return procTable[pid];
 }

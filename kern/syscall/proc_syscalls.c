@@ -75,7 +75,6 @@ int sys_fork(struct trapframe *parent_tf, int32_t *retval)
     }
 
     // copy things from the current proc
-    child_proc->p_numthreads = parent_proc->p_numthreads; // unsigned p_numthreads
     // struct addrspace *p_addrspace
     // new room for our child
     child_proc->p_addrspace = as_create();
@@ -125,8 +124,13 @@ int sys__exit(int exitcode)
     struct proc *proc = curproc;
     KASSERT(proc != NULL);
 
+    lock_acquire(proc->lock_cv);
+
     // store encoded exit code
     proc->exitcode = _MKWAIT_EXIT(exitcode);
+    
+    cv_signal(proc->cv_exit, proc->lock_cv);
+    lock_release(proc->lock_cv);
 
     // thread can exit now
     thread_exit();
@@ -163,7 +167,7 @@ int sys_waitpid(pid_t pid, int *status, int options, int32_t *retval)
         return EINVAL;
     }
     // does the child exist?
-    struct proc *childproc = *proc->procTable[pid];
+    struct proc *childproc = proc_fetch(pid);
     if (childproc == NULL) {
         // child process does not exist
         return ESRCH;
@@ -175,13 +179,15 @@ int sys_waitpid(pid_t pid, int *status, int options, int32_t *retval)
     }
 
     // set a return value 
-    *retval = pid;
+    *retval = childproc->pid;
 
+    lock_acquire(childproc->lock_cv);
     // while the child has not exited...
-    while (childproc->exitcode == -1) {
-        // just yield it!
-        thread_yield();
+    if (childproc->exitcode == -1) {
+        cv_wait(childproc->cv_exit, childproc->lock_cv);
     }
+    lock_release(childproc->lock_cv);
+
     KASSERT(childproc->exitcode != -1);
     // store the encoded exitcode to *status
     result = copyout(&childproc->exitcode, (userptr_t)status, sizeof(childproc->exitcode));
@@ -189,10 +195,9 @@ int sys_waitpid(pid_t pid, int *status, int options, int32_t *retval)
         panic("copyout is not working!");
         return result;
     }
+
     // unlink the proc table
-    KASSERT(*proc->procTable[pid] == childproc);
-    *proc->procTable[pid] = NULL;
-    KASSERT(*proc->procTable[pid] == NULL);
+    proc_deregister(childproc);
 
     // destroy the child process
     proc_destroy(childproc);

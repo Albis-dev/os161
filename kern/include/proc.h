@@ -84,9 +84,8 @@ struct proc {
 
 	/* Exit code */
 	int exitcode; 			/* Encoded exit code from thread */
-
-	/* Process Table */
-	struct proc *(*procTable)[PID_MAX]; /* A pointer to array of pointers to processes */
+	struct lock *lock_cv;
+	struct cv *cv_exit;
 
 	/* File Table */
 	struct fileHandle *fileTable[];
@@ -100,6 +99,11 @@ struct fileHandle {
 
 	struct lock *fh_lock; /* for forked processes */
 };
+
+/* Process table helpers */
+void proc_register(struct proc *);
+void proc_deregister(struct proc *);
+struct proc * proc_fetch(pid_t);
 
 /* Create a file handle */
 struct fileHandle * fh_create(void);
