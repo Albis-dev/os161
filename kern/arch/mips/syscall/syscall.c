@@ -38,6 +38,7 @@
 #include <file_syscalls.h>
 #include <proc_syscalls.h>
 #include <copyinout.h>
+#include <symch
 
 
 /*
@@ -229,9 +230,9 @@ enter_forked_process(void *parent_tf, long unsigned int num)
 	bzero(&tf, sizeof(tf));
 	// make the trapframe to be on the stack
 	memcpy(&tf, (struct trapframe *)parent_tf, sizeof(*(struct trapframe *)parent_tf));
+	kfree((struct trapframe *)parent_tf);
 	tf.tf_v0 = 0;
 	tf.tf_a3 = 0;
 	tf.tf_epc += 4;
-
 	mips_usermode(&tf);
 }
