@@ -106,6 +106,9 @@ proc_create(const char *name)
 	proc->pid = -1;
 	proc->p_pid = -1;
 
+	/* Exit code */
+	proc->exitcode = -1;
+
 	// find usable pid
 	for (int i=PID_MIN; i<PID_MAX; i++) {
 		if (procTable[i] == NULL) {

@@ -1,8 +1,11 @@
 #include <proc_syscalls.h>
 
 #include <addrspace.h>
+#include <copyinout.h>
 #include <proc.h>
+#include <synch.h>
 #include <kern/errno.h>
+#include <kern/wait.h>
 #include <current.h>
 #include <thread.h>
 #include <limits.h>
@@ -12,7 +15,6 @@
  * Provides the pid of the current process.
  * 
  * Return Value : curproc->pid 
- * 
  */ 
 int sys_getpid(int32_t *retval)
 {
@@ -103,6 +105,97 @@ int sys_fork(struct trapframe *parent_tf, int32_t *retval)
     thread_fork(child_proc->p_name, child_proc, enter_forked_process, (void *)parent_tf, 0);
 
     *retval = child_proc->pid;
+
+    return 0;
+}
+
+/*
+ * Encode the given exitcode and store it in proc structure.
+ * 
+ * Return Value : Does not return
+ */ 
+int sys__exit(int exitcode)
+{
+    if (!(exitcode == 0 || exitcode == 1 || exitcode == 2  || exitcode == 3)){
+        panic("Invalid exitcode");
+    }
+
+    // load current process
+    KASSERT(curproc != NULL);
+    struct proc *proc = curproc;
+    KASSERT(proc != NULL);
+
+    // store encoded exit code
+    proc->exitcode = _MKWAIT_EXIT(exitcode);
+
+    // thread can exit now
+    thread_exit();
+
+    return 0;
+}
+
+int sys_waitpid(pid_t pid, int *status, int options, int32_t *retval)
+{
+    /*
+     * EINVAL 	The options argument requested invalid or unsupported options.
+     * ECHILD 	The pid argument named a process that was not a child of the current process.
+     * ESRCH 	The pid argument named a nonexistent process.
+     * EFAULT 	The status argument was an invalid pointer.
+     */
+    int result;
+
+    // "child" means the process we're waiting for
+
+    /* sanity checks */
+    // load current process
+    KASSERT(curproc != NULL);
+    struct proc *proc = curproc;
+    KASSERT(proc != NULL);
+
+    // is the pid valid?
+    if (pid < PID_MIN || pid > PID_MAX) {
+        // pid out of range
+        return ESRCH;
+    }
+    // is the "options" argument 0?
+    if (options != 0) {
+        // since we do not support other than 0
+        return EINVAL;
+    }
+    // does the child exist?
+    struct proc *childproc = *proc->procTable[pid];
+    if (childproc == NULL) {
+        // child process does not exist
+        return ESRCH;
+    }
+    // is this process the parent?
+    if (childproc->p_pid != proc->pid) {
+        // it's not your child!
+        return ECHILD;
+    }
+
+    // set a return value 
+    *retval = pid;
+
+    // while the child has not exited...
+    while (childproc->exitcode == -1) {
+        // just yield it!
+        thread_yield();
+    }
+    KASSERT(childproc->exitcode != -1);
+    // store the encoded exitcode to *status
+    result = copyout(&childproc->exitcode, (userptr_t)status, sizeof(childproc->exitcode));
+    if (result) {
+        panic("copyout is not working!");
+        return result;
+    }
+    // unlink the proc table
+    KASSERT(*proc->procTable[pid] == childproc);
+    *proc->procTable[pid] = NULL;
+    KASSERT(*proc->procTable[pid] == NULL);
+
+    // destroy the child process
+    proc_destroy(childproc);
 
     return 0;
 }

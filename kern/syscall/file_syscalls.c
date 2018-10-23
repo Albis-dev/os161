@@ -3,7 +3,6 @@
  * 
  * Don't forget to dispatch using system call dispatcher.
  * (arch/mips/syscall/syscall.c)
- * 
  */
 
 #include <file_syscalls.h>
@@ -28,7 +27,7 @@
  * Using vfs_open(), populate the file handle structure and assign
  * a process-specific file descriptor to it.
  * 
- * Return Value : Non-negative integer upon success.
+ * Return Value : Non-negative integer(file descriptor) upon success.
  */ 
 int
 sys_open(char *filename, int flags, int32_t *retval) {
@@ -82,7 +81,7 @@ sys_open(char *filename, int flags, int32_t *retval) {
  * Using vfs_close(), fetch the file handle structure,
  * decrement vnode refcount and destroy the file handle if the refcount == 0
  * 
- * Return Value : Always return 0. (Never fails)
+ * Return Value : Always 0 (Never fails)
  */ 
 int
 sys_close(int fd) {
@@ -121,7 +120,7 @@ sys_close(int fd) {
  * 
  * Using VOP_WRITE() macro, initialize uio using uio_kinit() (see uio.h) and execute.
  * 
- * Return Value : Non-negative integer upon success.
+ * Return Value : Bytes written
  */ 
 int
 sys_write(int fd, void *buf, size_t buflen, ssize_t *retval)

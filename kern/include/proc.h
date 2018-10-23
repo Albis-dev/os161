@@ -42,6 +42,7 @@
  */
 
 #include <spinlock.h>
+#include <synch.h>
 #include <limits.h>
 
 struct addrspace;
@@ -79,8 +80,11 @@ struct proc {
 
 	/* Process ID */
 	pid_t pid;					/* ID of this process */
-	pid_t p_pid;				/* ID of the parent process 
-								   if parent doesn't exist, then 0 */
+	pid_t p_pid;				/* ID of the parent process */
+
+	/* Exit code */
+	int exitcode; 			/* Encoded exit code from thread */
+
 	/* Process Table */
 	struct proc *(*procTable)[PID_MAX]; /* A pointer to array of pointers to processes */
 
