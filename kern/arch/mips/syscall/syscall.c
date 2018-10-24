@@ -38,7 +38,7 @@
 #include <file_syscalls.h>
 #include <proc_syscalls.h>
 #include <copyinout.h>
-#include <symch
+#include <addrspace.h>
 
 
 /*
@@ -138,6 +138,10 @@ syscall(struct trapframe *tf)
 		err = sys_write((int)tf->tf_a0, (void *)tf->tf_a1, (size_t)tf->tf_a2, &retval);
 		break;
 
+		case SYS_read:
+		err = sys_read((int)tf->tf_a0, (void *)tf->tf_a1, (size_t)tf->tf_a2, &retval);
+		break;
+
 		case SYS_lseek:
 		result = copyin((const_userptr_t)tf->tf_sp + 16, &whence, sizeof(int32_t));
 		if (result) {
@@ -234,5 +238,6 @@ enter_forked_process(void *parent_tf, long unsigned int num)
 	tf.tf_v0 = 0;
 	tf.tf_a3 = 0;
 	tf.tf_epc += 4;
+	as_activate();
 	mips_usermode(&tf);
 }

@@ -66,6 +66,8 @@ struct vnode;
  * thread_switch needs to be able to fetch the current address space
  * without sleeping.
  */
+extern struct proc * procTable[PID_MAX];
+
 struct proc {
 	/* etc */
 	char *p_name;			/* Name of this process */
@@ -84,8 +86,7 @@ struct proc {
 
 	/* Exit code */
 	int exitcode; 			/* Encoded exit code from thread */
-	struct lock *lock_cv;
-	struct cv *cv_exit;
+	struct semaphore *sem_exit;
 
 	/* File Table */
 	struct fileHandle *fileTable[];

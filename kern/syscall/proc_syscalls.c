@@ -84,9 +84,9 @@ int sys_fork(struct trapframe *parent_tf, int32_t *retval)
     // copy parent
     result = as_copy(parent_proc->p_addrspace, &child_proc->p_addrspace);
     if (result) {
+        panic("as_copy!!");
         return result;
     }
-    child_proc->p_cwd = parent_proc->p_cwd; // struct vnode p_cwd
     child_proc->p_pid = parent_pid; // pit_t p_pid
 
     KASSERT(child_proc->p_pid != -1 && child_proc->pid != -1);
@@ -124,13 +124,9 @@ int sys__exit(int exitcode)
     struct proc *proc = curproc;
     KASSERT(proc != NULL);
 
-    lock_acquire(proc->lock_cv);
-
     // store encoded exit code
     proc->exitcode = _MKWAIT_EXIT(exitcode);
-    
-    cv_signal(proc->cv_exit, proc->lock_cv);
-    lock_release(proc->lock_cv);
+    V(proc->sem_exit);
 
     // thread can exit now
     thread_exit();
@@ -181,13 +177,10 @@ int sys_waitpid(pid_t pid, int *status, int options, int32_t *retval)
     // set a return value 
     *retval = childproc->pid;
 
-    lock_acquire(childproc->lock_cv);
     // while the child has not exited...
-    if (childproc->exitcode == -1) {
-        cv_wait(childproc->cv_exit, childproc->lock_cv);
-    }
-    lock_release(childproc->lock_cv);
 
+    P(childproc->sem_exit);
+    
     KASSERT(childproc->exitcode != -1);
     // store the encoded exitcode to *status
     result = copyout(&childproc->exitcode, (userptr_t)status, sizeof(childproc->exitcode));

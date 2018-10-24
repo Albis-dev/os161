@@ -108,13 +108,11 @@ proc_create(const char *name)
 
 	/* Exit code */
 	proc->exitcode = -1;
+	proc->sem_exit = sem_create("sem_exit", 0);
+	KASSERT(proc->sem_exit != NULL);
 
 	/* Register to the process table */
 	proc_register(proc);
-
-	/* lock and cv */
-	proc->lock_cv = lock_create("lock_cv");
-	proc->cv_exit = cv_create("exit");
 
 	return proc;
 }
@@ -202,9 +200,8 @@ proc_destroy(struct proc *proc)
 	KASSERT(proc->p_numthreads == 0);
 	spinlock_cleanup(&proc->p_lock);
 
-	/* lock and cv */
-	lock_destroy(proc->lock_cv);
-	cv_destroy(proc->cv_exit);
+	/* sem_exit */
+	sem_destroy(proc->sem_exit);
 
 	kfree(proc->p_name);
 	kfree(proc);

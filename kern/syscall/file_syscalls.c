@@ -181,6 +181,67 @@ sys_write(int fd, void *buf, size_t buflen, ssize_t *retval)
     return 0;
 }
 
+/*
+ * Reads a file, store it to given buffer address.
+ * 
+ * 
+ * Return Value : Bytes read. Error number upon failure.
+ */ 
+int sys_read(int fd, void *buf, size_t buflen, ssize_t *retval) {
+    /*
+    * EBADF 	fd is not a valid file descriptor, or was not opened for reading.
+    * EFAULT 	Part or all of the address space pointed to by buf is invalid.
+    * EIO 	    A hardware I/O error occurred reading the data.
+    */
+
+    // load current process
+    KASSERT(curproc != NULL);
+    struct proc *proc = curproc;
+    KASSERT(proc != NULL);
+
+    // EBADF check section
+    struct fileHandle *fh;
+
+    spinlock_acquire(&proc->p_lock);
+    fh = proc->fileTable[fd];
+    spinlock_release(&proc->p_lock);
+
+    lock_acquire(fh->fh_lock);
+
+    if (fh == NULL) {
+        /* invalid fd */
+        return EBADF;
+    } else if (fh->fh_accmode == O_WRONLY) {
+        /* incorrect access mode */
+        return EBADF;
+    } else if (fh->fh_vnode == NULL) {
+        /* haven't initialized */
+        return EBADF;
+    }
+
+    int result;
+
+    // Initialize uio structure
+    struct iovec iov;
+    struct uio myuio;
+
+    uio_kinit(&iov, &myuio, (void *)buf, buflen, fh->fh_offset, UIO_READ);
+    myuio.uio_segflg = UIO_USERSPACE;
+    myuio.uio_space = proc_getas();
+
+    result = VOP_READ(fh->fh_vnode, &myuio);
+
+    *retval = myuio.uio_offset - fh->fh_offset;
+    fh->fh_offset = myuio.uio_offset;
+    lock_release(fh->fh_lock);
+
+    if (result) {
+        return result;
+    }
+
+    return 0;
+}
+
 int sys_lseek (int fd, off_t pos, int whence, off_t *retval)
 {   
     int result;
