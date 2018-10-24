@@ -85,15 +85,22 @@ main(int argc, char **argv)
 		for (j = 0; j < BUFFER_SIZE; j++) {
 			writebuf[j] = i * 2 * j;
 		}
+		tprintf("Trying to write size of %d\n", sizeof(writebuf));
+
 		len = write(fh, writebuf, sizeof(writebuf));
 		if (len != sizeof(writebuf)) {
+			tprintf("len = %d, writebuf = %d\n", len, sizeof(writebuf));
 			err(1, "write failed");
 		}
+
+		tprintf("Bytes Written : %d\n", len);
 
     // 23 Mar 2012 : GWA : Use lseek() to skip the odd guys.
 
     target = (i + 1) * 2 * sizeof(writebuf);
+	tprintf("Trying to adjust offset to %d + %d\n", len, sizeof(writebuf));
     pos = lseek(fh, sizeof(writebuf), SEEK_END);
+	tprintf("lseek result is : %llu\n", pos);
     if (pos != target) {
       err(1, "(even) lseek failed: %llu != %llu", pos, target);
     }
@@ -113,7 +120,9 @@ main(int argc, char **argv)
     // 23 Mar 2012 : GWA : Use lseek() to skip the even guys.
 
     target = ((i * 2) + 1) * sizeof(writebuf);
+	tprintf("Trying to adjust offset to file handle offset + %d\n", sizeof(writebuf));
     pos = lseek(fh, sizeof(writebuf), SEEK_CUR);
+	tprintf("lseek result is : %llu\n", pos);
     if (pos != target) {
       err(1, "(odd) lseek failed: %llu != %llu", pos, target);
     }
@@ -121,10 +130,12 @@ main(int argc, char **argv)
     for (j = 0; j < BUFFER_SIZE; j++) {
 			writebuf[j] = ((i * 2) + 1) * j;
 		}
+		tprintf("Trying to write size of %d\n", sizeof(writebuf));
 		len = write(fh, writebuf, sizeof(writebuf));
 		if (len != sizeof(writebuf)) {
 			err(1, "write failed");
 		}
+		tprintf("Bytes Written : %d\n", len);
   }
 
 	// 23 Mar 2012 : GWA : Read the test data back and make sure what we wrote

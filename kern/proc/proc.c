@@ -45,6 +45,7 @@
 #include <types.h>
 #include <spl.h>
 #include <proc.h>
+#include <limits.h>
 #include <current.h>
 #include <addrspace.h>
 #include <vnode.h>
@@ -63,31 +64,35 @@ struct proc *kproc;
 struct fileHandle *console = NULL;
 
 /*
+ * Process ID Table
+ */ 
+struct proc * procTable[PID_MAX] = { NULL };
+
+/*
  * Create a proc structure.
  */
-static
 struct proc *
 proc_create(const char *name)
 {
 	struct proc *proc;
 
-	// allocate proc struct AND fileTable[MAXFTENTRY] array
+	// allocate a proc struct and an array fileTable[MAXFTENTRY]
 	proc = kmalloc(sizeof(*proc) + sizeof(struct fileHandle)*MAXFTENTRY);
 	if (proc == NULL) {
 		return NULL;
 	}
 
-	// initialize array
+	/* File Table */
 	for (int i=0; i<MAXFTENTRY; i++) {
 		proc->fileTable[i] = NULL;
 	}
 
+	/* etc */
 	proc->p_name = kstrdup(name);
 	if (proc->p_name == NULL) {
 		kfree(proc);
 		return NULL;
 	}
-
 	proc->p_numthreads = 0;
 	spinlock_init(&proc->p_lock);
 
@@ -96,6 +101,18 @@ proc_create(const char *name)
 
 	/* VFS fields */
 	proc->p_cwd = NULL;
+
+	/* Process ID */
+	proc->pid = -1;
+	proc->p_pid = -1;
+
+	/* Exit code */
+	proc->exitcode = -1;
+	proc->sem_exit = sem_create("sem_exit", 0);
+	KASSERT(proc->sem_exit != NULL);
+
+	/* Register to the process table */
+	proc_register(proc);
 
 	return proc;
 }
@@ -182,6 +199,9 @@ proc_destroy(struct proc *proc)
 
 	KASSERT(proc->p_numthreads == 0);
 	spinlock_cleanup(&proc->p_lock);
+
+	/* sem_exit */
+	sem_destroy(proc->sem_exit);
 
 	kfree(proc->p_name);
 	kfree(proc);
@@ -358,4 +378,41 @@ void fh_destroy(struct fileHandle *fh)
 {
 	lock_destroy(fh->fh_lock);
 	kfree(fh);
+}
+
+/*
+ * Register the newly created process to the process table.
+ */
+void
+proc_register(struct proc *newproc) 
+{
+	KASSERT(newproc != NULL);
+	// find usable pid
+	for (int i=PID_MIN; i<PID_MAX; i++) {
+		if (procTable[i] == NULL) {
+			newproc->pid = i;
+			break;
+		}
+	}
+
+	if (newproc->pid < PID_MIN) {
+		panic("Process Table is full!");
+	}
+
+	// assign current proc to the process table 
+	KASSERT(procTable[newproc->pid] == NULL);
+	procTable[newproc->pid] = newproc;
+}
+
+void
+proc_deregister(struct proc *proc)
+{
+	KASSERT(proc != NULL);
+	KASSERT(procTable[proc->pid] == proc);
+	procTable[proc->pid] = NULL;
+}
+
+struct proc *
+proc_fetch(pid_t pid) {
+	return procTable[pid];
 }

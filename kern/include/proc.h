@@ -42,6 +42,8 @@
  */
 
 #include <spinlock.h>
+#include <synch.h>
+#include <limits.h>
 
 struct addrspace;
 struct thread;
@@ -64,18 +66,27 @@ struct vnode;
  * thread_switch needs to be able to fetch the current address space
  * without sleeping.
  */
+extern struct proc * procTable[PID_MAX];
+
 struct proc {
+	/* etc */
 	char *p_name;			/* Name of this process */
-	struct spinlock p_lock;		/* Lock for this structure */
+	struct spinlock p_lock;		/* Spinlock for this structure */
 	unsigned p_numthreads;		/* Number of threads in this process */
 
 	/* VM */
-	struct addrspace *p_addrspace;	/* virtual address space */
+	struct addrspace *p_addrspace;	/* Virtual address space */
 
 	/* VFS */
-	struct vnode *p_cwd;		/* current working directory */
+	struct vnode *p_cwd;		/* Current working directory */
 
-	/* add more material here as needed */
+	/* Process ID */
+	pid_t pid;					/* ID of this process */
+	pid_t p_pid;				/* ID of the parent process */
+
+	/* Exit code */
+	int exitcode; 			/* Encoded exit code from thread */
+	struct semaphore *sem_exit;
 
 	/* File Table */
 	struct fileHandle *fileTable[];
@@ -90,7 +101,15 @@ struct fileHandle {
 	struct lock *fh_lock; /* for forked processes */
 };
 
+/* Process table helpers */
+void proc_register(struct proc *);
+void proc_deregister(struct proc *);
+struct proc * proc_fetch(pid_t);
+
+/* Create a file handle */
 struct fileHandle * fh_create(void);
+
+/* Destroy a file handle */
 void fh_destroy(struct fileHandle*);
 
 /* This is the process structure for the kernel and for kernel-only threads. */
@@ -101,6 +120,9 @@ void proc_bootstrap(void);
 
 /* Create a fresh process for use by runprogram(). */
 struct proc *proc_create_runprogram(const char *name);
+
+/* Create a process. Once was a static function. */
+struct proc *proc_create(const char *name);
 
 /* Destroy a process. */
 void proc_destroy(struct proc *proc);
