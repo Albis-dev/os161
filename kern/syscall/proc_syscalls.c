@@ -38,7 +38,7 @@ int sys_getpid(int32_t *retval)
  * 
  *                Upon error, returns -1 and error is set.
  */ 
-int sys_fork(struct trapframe *parent_tf, int32_t *retval)
+int sys_fork(struct trapframe *tf, int32_t *retval)
 {
     /* 
     * EMPROC 	    The current user already has too many processes.
@@ -66,6 +66,14 @@ int sys_fork(struct trapframe *parent_tf, int32_t *retval)
         panic("Go check your pid implementation!");
     }
 
+    // copy trapframe first
+    struct trapframe *parent_tf = kmalloc(sizeof(*tf));
+    if (parent_tf == NULL) {
+        return ENOMEM;
+    }
+    
+    parent_tf = memcpy(parent_tf, tf, sizeof(*tf));
+
     // remember the pid of current proc    
     parent_pid = parent_proc->pid;
 
@@ -82,15 +90,17 @@ int sys_fork(struct trapframe *parent_tf, int32_t *retval)
     if (child_proc->p_addrspace == NULL) {
         return ENOMEM;
     }
-    // copy parent
+    // copy parent addrspace
     result = as_copy(parent_proc->p_addrspace, &child_proc->p_addrspace);
     if (result) {
         return result;
     }
-    child_proc->p_pid = parent_pid; // pid_t p_pid
+    // copy parent pid information
+    child_proc->p_pid = parent_pid;
 
     KASSERT(child_proc->p_pid != -1 && child_proc->pid != -1);
-    // file handle copy section
+
+    // copy parent file table
     struct fileHandle *fh = NULL;
     
     for (int i=0; i<MAXFTENTRY; i++) {
@@ -98,6 +108,7 @@ int sys_fork(struct trapframe *parent_tf, int32_t *retval)
         if (fh != NULL) {
             child_proc->fileTable[i] = fh;
             VOP_INCREF(child_proc->fileTable[i]->fh_vnode);
+            fh->fh_refcount++;
         }
     }
 

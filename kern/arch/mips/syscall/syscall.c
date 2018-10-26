@@ -90,9 +90,6 @@ syscall(struct trapframe *tf)
 	int64_t retval64; // os161 uses hign/low endianess
 	int32_t retval_high;
 	int32_t retval_low;
-	
-	// fork
-	struct trapframe *tf_backup = NULL;
 
 	// lseek
 	int32_t whence;
@@ -160,9 +157,7 @@ syscall(struct trapframe *tf)
 
 		case SYS_fork:
 		// save trapframe on the kernel heap
-		tf_backup = kmalloc(sizeof(*tf));
-		tf_backup = memcpy(tf_backup, tf, sizeof(*tf));
-		err = sys_fork(tf_backup, &retval);
+		err = sys_fork(tf, &retval);
 		break;
 
 		case SYS_getpid:
@@ -187,6 +182,7 @@ syscall(struct trapframe *tf)
 
 		case SYS_dup2:
 		err = sys_dup2((int)tf->tf_a0, (int)tf->tf_a1, &retval);
+		break;
 		
 
 	    default:
@@ -242,6 +238,7 @@ enter_forked_process(void *parent_tf, long unsigned int num)
     KASSERT(proc != NULL);
 
 	struct trapframe tf;
+	KASSERT(parent_tf != NULL);
 	// initialize 
 	bzero(&tf, sizeof(tf));
 	// make the trapframe to be on the stack
