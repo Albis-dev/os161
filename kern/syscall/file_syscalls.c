@@ -331,15 +331,6 @@ int sys___getcwd(char *buf, size_t buflen, int32_t *retval)
         splx(old_p_level);
         return EFAULT;
     }
-    
-    // load current process
-    KASSERT(curproc != NULL);
-    struct proc *proc = curproc;
-    KASSERT(proc != NULL);
-
-    // fetch p_cwd
-    struct vnode *cwd = proc->p_cwd;
-    KASSERT(cwd != NULL);
 
     // 1. initialize uio struct
         // uio_read bc it's kernel -> uio
@@ -357,7 +348,7 @@ int sys___getcwd(char *buf, size_t buflen, int32_t *retval)
     // 2. use it
         // vop_namefile(vnode, uio);
     int result;
-    result = VOP_NAMEFILE(cwd, &myuio);
+    result = vfs_getcwd(&myuio);
     if (result) {
         splx(old_p_level); 
         return result;
