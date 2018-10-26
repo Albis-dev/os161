@@ -16,6 +16,7 @@
 #include <kern/seek.h>
 #include <proc.h>
 #include <synch.h>
+#include <spl.h>
 #include <types.h>
 #include <uio.h>
 #include <vfs.h>
@@ -307,3 +308,66 @@ int sys_lseek (int fd, off_t pos, int whence, off_t *retval)
 
     return 0;
 }
+
+/*
+ * Store the name of current working directory in the given buffer.
+ * Should be atomic.
+ * 
+ * Return Value : Bytes written to the buffer. Error number upon failure.
+ */ 
+int sys___getcwd(char *buf, size_t buflen, int32_t *retval)
+{
+    /*
+     * ENOENT 	A component of the pathname no longer exists.
+     * EIO		A hard I/O error occurred.
+     * EFAULT		buf points to an invalid address.
+     */
+    int old_p_level;
+    old_p_level = splhigh();
+
+    // sanity checks
+    // is the buffer NULL?
+    if (buf == NULL) {
+        splx(old_p_level);
+        return EFAULT;
+    }
+    
+    // load current process
+    KASSERT(curproc != NULL);
+    struct proc *proc = curproc;
+    KASSERT(proc != NULL);
+
+    // fetch p_cwd
+    struct vnode *cwd = proc->p_cwd;
+    KASSERT(cwd != NULL);
+
+    // 1. initialize uio struct
+        // uio_read bc it's kernel -> uio
+        // uio_userspace
+        // iovec->iov_ubase = buf
+        // iovec->iov_len = buflen
+        // uio->uio_space = curproc->p_addrspace
+    struct iovec iov;
+    struct uio myuio;
+
+    uio_kinit(&iov, &myuio, (void *)buf, buflen, 0, UIO_READ);
+    myuio.uio_segflg = UIO_USERSPACE;
+    myuio.uio_space = proc_getas();
+
+    // 2. use it
+        // vop_namefile(vnode, uio);
+    int result;
+    result = VOP_NAMEFILE(cwd, &myuio);
+    if (result) {
+        splx(old_p_level); 
+        return result;
+    }
+    
+    *retval = myuio.uio_offset;
+
+    // set spl
+    splx(old_p_level);
+
+    return 0;
+}
+
