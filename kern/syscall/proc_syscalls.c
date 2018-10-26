@@ -85,7 +85,6 @@ int sys_fork(struct trapframe *parent_tf, int32_t *retval)
     // copy parent
     result = as_copy(parent_proc->p_addrspace, &child_proc->p_addrspace);
     if (result) {
-        panic("as_copy!!");
         return result;
     }
     child_proc->p_pid = parent_pid; // pid_t p_pid

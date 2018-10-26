@@ -96,6 +96,7 @@ struct fileHandle {
 	struct vnode *fh_vnode; /* abstract structure for an on-disk file (vnode.h) */
 
 	int fh_accmode; /* indicates whether it's read/write/read&write */
+	int fh_refcount; /* reference count */
 	off_t fh_offset; /* file offset */
 
 	struct lock *fh_lock; /* for forked processes */

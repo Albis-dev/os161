@@ -383,12 +383,14 @@ fh_create()
 
 	fh->fh_vnode = NULL;
 	fh->fh_offset = 0;
+	fh->fh_refcount = 0;
 
 	return fh;
 }
 
 void fh_destroy(struct fileHandle *fh)
-{
+{	
+	KASSERT(fh->fh_refcount == 0);
 	lock_destroy(fh->fh_lock);
 	kfree(fh);
 }

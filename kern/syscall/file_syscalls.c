@@ -69,6 +69,9 @@ sys_open(char *filename, int flags, int32_t *retval) {
     proc->fileTable[fd] = fh;
     KASSERT(proc->fileTable[fd] == fh);
 
+    // increase the file handle refcount
+    fh->fh_refcount++; 
+
     spinlock_release(&curproc->p_lock);
     KASSERT(!spinlock_do_i_hold(&proc->p_lock));
 
@@ -86,6 +89,14 @@ sys_open(char *filename, int flags, int32_t *retval) {
  */ 
 int
 sys_close(int fd) {
+    /*
+     *  EBADF 	fd is not a valid file descriptor.
+     *  EIO		A hard I/O error occurred.
+     */
+    // fd check
+    if (fd < 0 || fd > MAXFTENTRY){
+            return EBADF;
+    }
 
     struct fileHandle *fh;
 
@@ -96,22 +107,29 @@ sys_close(int fd) {
     spinlock_acquire(&proc->p_lock);
     // query the file table and get the current file handle
     fh = proc->fileTable[fd];
-    KASSERT(fh != NULL);
     spinlock_release(&proc->p_lock);
+
+    if (fh == NULL) {
+        return EBADF;
+    }
 
     lock_acquire(fh->fh_lock);
     // decrements vnode's reference count
     // it will automatically destroy the vnode if the refcount hits zero
     // see vnode.c
     vfs_close(fh->fh_vnode);
-
+    fh->fh_refcount--;
+    
     // destroy the file handle if no one use the file
-    if (fh->fh_vnode->vn_refcount == 0) {
+    if (fh->fh_refcount == 0) {
         lock_release(fh->fh_lock);
         fh_destroy(fh);
     } else {
         lock_release(fh->fh_lock);
     }
+
+    // unlink from the file table
+    proc->fileTable[fd] = NULL;
 
     return 0; 
 }
@@ -132,6 +150,11 @@ sys_write(int fd, void *buf, size_t buflen, ssize_t *retval)
      * ENOSPC 	There is no free space remaining on the filesystem containing the file.
      * EIO 	A hardware I/O error occurred writing the data.
      */
+
+    // fd check
+    if (fd < 0 || fd > MAXFTENTRY){
+            return EBADF;
+    }
 
     // load current process
     KASSERT(curproc != NULL);
@@ -195,6 +218,11 @@ int sys_read(int fd, void *buf, size_t buflen, ssize_t *retval) {
     * EIO 	    A hardware I/O error occurred reading the data.
     */
 
+    // fd check
+    if (fd < 0 || fd > MAXFTENTRY){
+            return EBADF;
+    }
+
     // load current process
     KASSERT(curproc != NULL);
     struct proc *proc = curproc;
@@ -246,6 +274,11 @@ int sys_read(int fd, void *buf, size_t buflen, ssize_t *retval) {
 int sys_lseek (int fd, off_t pos, int whence, off_t *retval)
 {   
     int result;
+
+    // fd check
+    if (fd < 0 || fd > MAXFTENTRY){
+            return EBADF;
+    }
 
     // load current process
     KASSERT(curproc != NULL);
@@ -394,6 +427,62 @@ int sys_chdir(char *pathname)
     }
 
     splx(old_p_level);
+
+    return 0;
+}
+
+int sys_dup2(int oldfd, int newfd, int32_t *retval)
+{
+    /*
+     * EBADF 	oldfd is not a valid file descriptor, or newfd
+     *          is a value that cannot be a valid file descriptor.
+     * EMFILE	The process's file table was full, or a process-
+     *          specific limit on open files was reached.
+     * ENFILE	The system's file table was full, if such a thing
+     *          is possible, or a global limit on open files was reached.
+     */
+
+    // fd check
+    if (oldfd < 0 || oldfd > MAXFTENTRY ||
+        newfd < 0 || newfd > MAXFTENTRY  ){
+            return EBADF;
+        }
+
+    // load current process
+    KASSERT(curproc != NULL);
+    struct proc *proc = curproc;
+    KASSERT(proc != NULL);
+
+    // EBADF check section
+    struct fileHandle *oldfh;
+
+    oldfh = proc->fileTable[oldfd];
+    if (oldfh == NULL) {
+        /* invalid fd */
+        return EBADF;
+    }
+
+    // check if we can use new fd right away
+    struct fileHandle *newfh;
+
+    newfh = proc->fileTable[newfd];
+    if (newfh != NULL) {
+        // sorry we need to close this first
+        // call sys_close
+        int result;
+        result = sys_close(newfd);
+        if (result) {
+            return result;
+        }
+    }
+
+    // attach the fh reference to new fd
+    proc->fileTable[newfd] = oldfh;
+    // increment refcount
+    VOP_INCREF(oldfh->fh_vnode);
+    oldfh->fh_refcount++;
+
+    *retval = newfd;
 
     return 0;
 }
