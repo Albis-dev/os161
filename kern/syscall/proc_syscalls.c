@@ -10,6 +10,7 @@
 #include <thread.h>
 #include <limits.h>
 #include <syscall.h>
+#include <vnode.h>
 
 /*
  * Provides the pid of the current process.
@@ -87,7 +88,7 @@ int sys_fork(struct trapframe *parent_tf, int32_t *retval)
         panic("as_copy!!");
         return result;
     }
-    child_proc->p_pid = parent_pid; // pit_t p_pid
+    child_proc->p_pid = parent_pid; // pid_t p_pid
 
     KASSERT(child_proc->p_pid != -1 && child_proc->pid != -1);
     // file handle copy section
@@ -97,6 +98,7 @@ int sys_fork(struct trapframe *parent_tf, int32_t *retval)
         fh = parent_proc->fileTable[i];
         if (fh != NULL) {
             child_proc->fileTable[i] = fh;
+            VOP_INCREF(child_proc->fileTable[i]->fh_vnode);
         }
     }
 

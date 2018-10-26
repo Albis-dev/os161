@@ -203,6 +203,19 @@ proc_destroy(struct proc *proc)
 	/* sem_exit */
 	sem_destroy(proc->sem_exit);
 
+	/* File Table */
+	struct fileHandle *fh;
+	for (int i=0; i<MAXFTENTRY; i++) {
+        fh = proc->fileTable[i];
+        if (fh != NULL) {
+			// we can try closing the file though, not gonna do it
+			// vfs_close() destroy the vnode if the refcount hit 0
+			if (fh->fh_vnode->vn_refcount > 1) {
+				VOP_DECREF(fh->fh_vnode);
+			}
+        }
+    }
+
 	kfree(proc->p_name);
 	kfree(proc);
 }
