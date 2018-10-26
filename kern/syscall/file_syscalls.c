@@ -362,3 +362,38 @@ int sys___getcwd(char *buf, size_t buflen, int32_t *retval)
     return 0;
 }
 
+/*
+ * The current directory of the current process is set to the directory named by pathname.
+ * Should be atomic.
+ * 
+ * Return Value : Error number upon failure.
+ */ 
+int sys_chdir(char *pathname)
+{
+    /*
+     * ENODEV 	The device prefix of pathname did not exist.
+     * ENOTDIR		A non-final component of pathname was not a directory.
+     * ENOTDIR		pathname did not refer to a directory.
+     * ENOENT		pathname did not exist.
+     * EIO		A hard I/O error occurred.
+     * EFAULT		pathname was an invalid pointer.
+     */
+    int old_p_level;
+    old_p_level = splhigh();
+
+    if (pathname == NULL) {
+        splx(old_p_level);
+        return EFAULT;
+    }
+
+    int result;
+    result = vfs_chdir(pathname);
+    if (result) {
+        splx(old_p_level);
+        return result;
+    }
+
+    splx(old_p_level);
+
+    return 0;
+}
