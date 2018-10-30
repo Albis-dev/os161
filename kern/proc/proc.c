@@ -210,6 +210,7 @@ proc_destroy(struct proc *proc)
         if (fh != NULL) {
 			// we can try closing the file though, not gonna do it
 			// vfs_close() destroy the vnode if the refcount hit 0
+			fh->fh_refcount--;
 			if (fh->fh_vnode->vn_refcount > 1) {
 				VOP_DECREF(fh->fh_vnode);
 			}
