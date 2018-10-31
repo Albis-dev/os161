@@ -14,6 +14,7 @@
 #include <kern/errno.h>
 #include <kern/stat.h>
 #include <kern/seek.h>
+#include <limits.h>
 #include <proc.h>
 #include <synch.h>
 #include <spl.h>
@@ -31,10 +32,36 @@
  * Return Value : Non-negative integer(file descriptor) upon success.
  */ 
 int
-sys_open(char *filename, int flags, int32_t *retval) {
-    
+sys_open(const char *filename, int flags, int32_t *retval) 
+{
+    /*
+     * ENODEV 	The device prefix of filename did not exist.
+     * ENOTDIR		A non-final component of filename was not a directory.
+     * ENOENT		A non-final component of filename did not exist.
+     * ENOENT		The named file does not exist, and O_CREAT was not specified.
+     * EEXIST		The named file exists, and O_EXCL was specified.
+     * EISDIR		The named object is a directory, and it was to be opened for writing.
+     * EMFILE		The process's file table was full, or a process-specific limit on open files was reached.
+     * ENFILE		The system file table is full, if such a thing exists, or a system-wide limit on open files was reached.
+     * ENXIO		The named object is a block device with no filesystem mounted on it.
+     * ENOSPC		The file was to be created, and the filesystem involved is full.
+     * EINVAL		flags contained invalid values.
+     * EIO		A hard I/O error occurred.
+     * EFAULT		filename was an invalid pointer.
+     */    
     int result = 0;
 
+    if (filename == NULL) {
+        return EFAULT;
+    }
+    
+    char *filename_copy = kmalloc(__PATH_MAX);
+    result = copyinstr((const userptr_t)filename, filename_copy, __PATH_MAX, NULL);
+    if (result) {
+        kfree(filename_copy);
+        return EFAULT;
+    }
+    
     KASSERT(curproc != NULL);
     struct proc *proc = curproc; // load current process
     KASSERT(proc != NULL);
@@ -42,9 +69,13 @@ sys_open(char *filename, int flags, int32_t *retval) {
     // create new file handle
     struct fileHandle *fh;
     fh = fh_create();
+    if (fh == NULL) {
+        return ENFILE;
+    }
 
     // open a file and populate vnode in the file handle struct
-    result = vfs_open(filename, flags, 0, &fh->fh_vnode);
+    result = vfs_open(filename_copy, flags, 0, &fh->fh_vnode);
+    kfree(filename_copy);
 	if (result) {
         // failed to open
         return result;
