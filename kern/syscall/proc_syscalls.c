@@ -226,6 +226,10 @@ int sys_waitpid(pid_t pid, int *status, int options, int32_t *retval)
  */ 
 int sys_execv(const char *program, char **args)
 {
+    // DEBUG LINE
+    struct proc *proc = curproc;
+    KASSERT(proc != NULL);
+
     /* The process file table and current working directory are not modified!!! */
     struct addrspace *new_as;
     struct addrspace *old_as;
@@ -418,7 +422,8 @@ int sys_execv(const char *program, char **args)
 
     // allign the argument pointers
     for(i=0; i<argc; i++) {
-        offset = len[i] + ((4-(len[i]%4)) % 4);
+        offset = size[i] + ((4-(size[i]%4)) % 4);
+        KASSERT(offset % 4 == 0);
         stackptr -= offset; // progress
         argptr[i] = (char *)stackptr;
     }
@@ -438,7 +443,7 @@ int sys_execv(const char *program, char **args)
 
     // copyout arguments to userstack
     for(i=0; i<argc; i++) {
-        result = copyoutstr(kargs[i], (userptr_t)argptr[i], len[i]+1, &actual);
+        result = copyoutstr(kargs[i], (userptr_t)argptr[i], size[i], &actual);
         if (result) {
             // do the thing
             return result;

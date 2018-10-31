@@ -187,6 +187,11 @@ sys_write(int fd, void *buf, size_t buflen, ssize_t *retval)
             return EBADF;
     }
 
+    // buf check
+    if (buf == NULL) {
+        return EFAULT;
+    }
+
     // load current process
     KASSERT(curproc != NULL);
     struct proc *proc = curproc;
@@ -198,17 +203,21 @@ sys_write(int fd, void *buf, size_t buflen, ssize_t *retval)
     spinlock_acquire(&proc->p_lock);
     fh = proc->fileTable[fd];
     spinlock_release(&proc->p_lock);
-
-    lock_acquire(fh->fh_lock);
-
+    
     if (fh == NULL) {
         /* invalid fd */
         return EBADF;
-    } else if (fh->fh_accmode == O_RDONLY) {
+    }
+
+    lock_acquire(fh->fh_lock);
+
+    if (fh->fh_accmode == O_RDONLY) {
         /* incorrect access mode */
+        lock_release(fh->fh_lock);
         return EBADF;
     } else if (fh->fh_vnode == NULL) {
         /* haven't initialized */
+        lock_release(fh->fh_lock);
         return EBADF;
     }
 
@@ -254,6 +263,11 @@ int sys_read(int fd, void *buf, size_t buflen, ssize_t *retval) {
             return EBADF;
     }
 
+    // buf check
+    if (buf == NULL) {
+        return EFAULT;
+    }
+
     // load current process
     KASSERT(curproc != NULL);
     struct proc *proc = curproc;
@@ -266,16 +280,20 @@ int sys_read(int fd, void *buf, size_t buflen, ssize_t *retval) {
     fh = proc->fileTable[fd];
     spinlock_release(&proc->p_lock);
 
-    lock_acquire(fh->fh_lock);
-
     if (fh == NULL) {
         /* invalid fd */
         return EBADF;
-    } else if (fh->fh_accmode == O_WRONLY) {
+    }
+
+    lock_acquire(fh->fh_lock);
+    
+    if (fh->fh_accmode == O_WRONLY) {
         /* incorrect access mode */
+        lock_release(fh->fh_lock);
         return EBADF;
     } else if (fh->fh_vnode == NULL) {
         /* haven't initialized */
+        lock_release(fh->fh_lock);
         return EBADF;
     }
 
@@ -410,12 +428,11 @@ int sys___getcwd(char *buf, size_t buflen, int32_t *retval)
     myuio.uio_space = proc_getas();
 
     // 2. use it
-        // vop_namefile(vnode, uio);
     int result;
     result = vfs_getcwd(&myuio);
     if (result) {
         splx(old_p_level); 
-        return result;
+        return EFAULT;
     }
     
     *retval = myuio.uio_offset;
@@ -432,7 +449,7 @@ int sys___getcwd(char *buf, size_t buflen, int32_t *retval)
  * 
  * Return Value : Error number upon failure.
  */ 
-int sys_chdir(char *pathname)
+int sys_chdir(const char *pathname)
 {
     /*
      * ENODEV 	The device prefix of pathname did not exist.
@@ -450,13 +467,22 @@ int sys_chdir(char *pathname)
         return EFAULT;
     }
 
+    char *pathname_copy = kmalloc(__PATH_MAX);
     int result;
-    result = vfs_chdir(pathname);
+    result = copyinstr((const userptr_t)pathname, pathname_copy, __PATH_MAX, NULL);
+    if (result) {
+        splx(old_p_level);
+        kfree(pathname_copy);
+        return EFAULT;
+    }
+
+    result = vfs_chdir(pathname_copy);
     if (result) {
         splx(old_p_level);
         return result;
     }
 
+    kfree(pathname_copy);
     splx(old_p_level);
 
     return 0;
