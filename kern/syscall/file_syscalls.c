@@ -432,7 +432,7 @@ int sys___getcwd(char *buf, size_t buflen, int32_t *retval)
     result = vfs_getcwd(&myuio);
     if (result) {
         splx(old_p_level); 
-        return EFAULT;
+        return result;
     }
     
     *retval = myuio.uio_offset;
