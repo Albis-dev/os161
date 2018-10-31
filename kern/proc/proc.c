@@ -384,7 +384,7 @@ fh_create()
 
 	fh->fh_vnode = NULL;
 	fh->fh_offset = 0;
-	fh->fh_refcount = 0;
+	fh->fh_refcount = 1;
 
 	return fh;
 }
