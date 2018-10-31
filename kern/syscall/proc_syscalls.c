@@ -115,6 +115,10 @@ int sys_fork(struct trapframe *tf, int32_t *retval)
         }
     }
 
+    // copy parent working directory
+    child_proc->p_cwd = parent_proc->p_cwd;
+    VOP_INCREF(parent_proc->p_cwd);
+
     // thread_fork properly (and implement enter_forked_process later!)
     thread_fork(child_proc->p_name, child_proc, enter_forked_process, (void *)parent_tf, 0);
 
