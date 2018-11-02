@@ -134,10 +134,6 @@ int sys_fork(struct trapframe *tf, int32_t *retval)
  */ 
 int sys__exit(int exitcode)
 {
-    if (!(exitcode == 0 || exitcode == 1 || exitcode == 2  || exitcode == 3)){
-        panic("Invalid exitcode");
-    }
-
     // load current process
     KASSERT(curproc != NULL);
     struct proc *proc = curproc;
@@ -230,17 +226,12 @@ int sys_waitpid(pid_t pid, int *status, int options, int32_t *retval)
  */ 
 int sys_execv(const char *program, char **args)
 {
-    // DEBUG LINE
-    struct proc *proc = curproc;
-    KASSERT(proc != NULL);
-
     /* The process file table and current working directory are not modified!!! */
     struct addrspace *new_as;
     struct addrspace *old_as;
 	struct vnode *elf_v;
-    size_t actual;
 	vaddr_t entrypoint, stackptr, initial_stackptr;
-	int result, argc, i;
+	int result, argc, i, total_size;
 
     /*
      * ENODEV 	The device prefix of program did not exist.
@@ -254,70 +245,87 @@ int sys_execv(const char *program, char **args)
      * EFAULT 	One of the arguments is an invalid pointer.
      */
 
-    /* args Sanity Checks */
-    if (args == NULL) {
-        // DELETE THESE LINES LATER ! ! !
-        panic("args == NULL");
-        // DELETE THESE LINES LATER ! ! !
-
+    /* Is it NULL? */
+    if (args == NULL || program == NULL) {
         return EFAULT;
     }
 
+    /* Is program legit? */ 
     char *program_copy = kmalloc(__PATH_MAX);
-    result = copyinstr((const_userptr_t)program, program_copy, __PATH_MAX, &actual);
+    if (program_copy == NULL) {
+        return ENOMEM;
+    }
+
+    result = copyinstr((const_userptr_t)program, program_copy, __PATH_MAX, NULL);
     if (result) {
+        kfree(program_copy);
         return result;
     }
 
-    /* Calculate argc */
-    argc = 0;
-    while(args[argc] != NULL) {
-        argc++;
+    /* Is args legit?*/
+    char *temp = kmalloc(1);
+    if (temp == NULL) {
+        kfree(program_copy);
+        return ENOMEM;
+    }
+    // verify args itself
+    result = copyin((const_userptr_t)args, temp, 1);
+    if (result) {
+        kfree(program_copy);
+        kfree(temp);
+        return result;
+    }
+    // verify contents of args and calculate argc
+    for(i=0, argc=0; args[i] != NULL; i++, argc++) {
+        result = copyin((const_userptr_t)args[i], temp, 1);
+        if (result) {
+            kfree(temp);
+            kfree(program_copy);
+            return result;
+        }
+    }
+    kfree(temp);
+
+    /* Is the size managable? */
+    int *size = kmalloc(sizeof(int) * argc);
+    if (size == NULL) {
+        kfree(program_copy);
+        kfree(temp);
+        return ENOMEM;
     }
     
-    /* args Size Check */
-    int size[argc];
-    int len[argc];
+    total_size = 0;
     for (i=0; i<argc; i++) {
-        len[i] = strlen(args[i]);
-        size[i] = (len[i]+1) * sizeof(char);
-        if (len[i] + ((4-(len[i]%4)) % 4) > __ARG_MAX) {
-            //panic("E2BIG");
-            return E2BIG;
-        }
+        size[i] = strlen(args[i]) + 1;
+        total_size += size[i];
+    }
+
+    if (total_size > __ARG_MAX) {
+        kfree(program_copy);
+        kfree(size);
+        return E2BIG;
     }
 
     /* Open Executable */
     result = vfs_open(program_copy, O_RDONLY, 0, &elf_v);
+    kfree(program_copy);
     if (result) {
-        // DELETE THESE LINES LATER ! ! !
-        //panic("vfs_open");
-        // DELETE THESE LINES LATER ! ! !
-
+        kfree(size);
         return result;
     }
-
-    kfree(program_copy);
     
     /* Addrspace Creation */
     new_as = as_create();
     if (new_as == NULL) {
-        // DELETE THESE LINES LATER ! ! !
-        //panic("as_create");
-        // DELETE THESE LINES LATER ! ! !
-
+        kfree(size);
         vfs_close(elf_v);
-
         return ENOMEM;
     }
 
     /* Argument Backup */
     char **kargs = (char **)kmalloc(sizeof(char *) * argc);
     if (kargs == NULL) {
-        // DELETE THESE LINES LATER ! ! !
-        //panic("char **kargs kmalloc");
-        // DELETE THESE LINES LATER ! ! !
-
+        kfree(size);
         vfs_close(elf_v);
         as_destroy(new_as);
         return ENOMEM;
@@ -331,37 +339,21 @@ int sys_execv(const char *program, char **args)
                 kfree(kargs[i]);
             }
             kfree(kargs);
+            kfree(size);
             vfs_close(elf_v);
             as_destroy(new_as);
-
-            // DELETE THESE LINES LATER ! ! !
-            //panic("kargs[i] kmalloc");
-            // DELETE THESE LINES LATER ! ! !
-
             return ENOMEM;
         }
-        result = copyinstr((userptr_t)args[i], kargs[i], size[i], &actual);
-        if (result) {
-            // DELETE THESE LINES LATER ! ! !
-            if (EFAULT) {
-                //panic("EFAULT");
-            }
-            if (ENAMETOOLONG) {
-                //panic("ENAMETOOLONG");
-            }
-            // DELETE THESE LINES LATER ! ! !
 
+        result = copyinstr((userptr_t)args[i], kargs[i], size[i], NULL);
+        if (result) {
             for(; i>-1; i--) {
                 kfree(kargs[i]);
             }
             kfree(kargs);
+            kfree(size);
             vfs_close(elf_v);
             as_destroy(new_as);
-
-            // DELETE THESE LINES LATER ! ! !
-            //panic("COPYINSTR");
-            // DELETE THESE LINES LATER ! ! !
-
             return result;
         }    
     }
@@ -376,50 +368,52 @@ int sys_execv(const char *program, char **args)
 
     /* Load the executable. */
 	result = load_elf(elf_v, &entrypoint);
+    vfs_close(elf_v);
 	if (result) {
-        // DELETE THESE LINES LATER ! ! !
-        //panic("LOAD_ELF");
-        // DELETE THESE LINES LATER ! ! !
-        
         as_deactivate(); 
         proc_setas(old_as);
 
         for(i--; i>-1; i--) {
             kfree(kargs[i]);
         }
+        kfree(size);
         kfree(kargs);
-        vfs_close(elf_v);
         as_destroy(new_as);
 
 		return result;
 	}
 
-	vfs_close(elf_v);
-
     /* Define the user stack in the address space */
 	result = as_define_stack(new_as, &stackptr);
 	if (result) {
-        // DELETE THESE LINES LATER ! ! !
-        //panic("AS_DEFINE_STACK");
-        // DELETE THESE LINES LATER ! ! !
-
 		as_deactivate(); 
         proc_setas(old_as);
 
         for(i--; i>-1; i--) {
             kfree(kargs[i]);
         }
+        kfree(size);
         kfree(kargs);
         as_destroy(new_as);
-		
 		return result;
 	}
 
     /* Copyout to Userstack */
     int offset;
-    char *argptr[argc+1]; // + NULL
-    
-    argptr[argc] = NULL;
+    vaddr_t *argptr = kmalloc(sizeof(vaddr_t) * argc);
+    if (argptr == NULL) {
+		as_deactivate(); 
+        proc_setas(old_as);
+
+        for(i--; i>-1; i--) {
+            kfree(kargs[i]);
+        }
+        kfree(size);
+        kfree(kargs);
+        as_destroy(new_as);
+		return ENOMEM;
+	}
+    argptr[argc] = 0;
     
     stackptr -= 4;
     bzero((void *)stackptr, 4);
@@ -429,7 +423,7 @@ int sys_execv(const char *program, char **args)
         offset = size[i] + ((4-(size[i]%4)) % 4);
         KASSERT(offset % 4 == 0);
         stackptr -= offset; // progress
-        argptr[i] = (char *)stackptr;
+        argptr[i] = stackptr;
     }
 
     stackptr -= sizeof(char *) * (argc+1); // + NULL
@@ -439,7 +433,16 @@ int sys_execv(const char *program, char **args)
     for(i=0; i<argc+1; i++) {
         result = copyout(&argptr[i], (userptr_t)stackptr, sizeof(char *));
         if (result) {
-            // do the thing
+            as_deactivate(); 
+            proc_setas(old_as);
+
+            for(i--; i>-1; i--) {
+                kfree(kargs[i]);
+            }
+            kfree(size);
+            kfree(kargs);
+            kfree(argptr);
+            as_destroy(new_as);
             return result;
         }
         stackptr += 4;
@@ -447,14 +450,21 @@ int sys_execv(const char *program, char **args)
 
     // copyout arguments to userstack
     for(i=0; i<argc; i++) {
-        result = copyoutstr(kargs[i], (userptr_t)argptr[i], size[i], &actual);
+        result = copyoutstr(kargs[i], (userptr_t)argptr[i], size[i], NULL);
         if (result) {
-            // do the thing
+            as_deactivate(); 
+            proc_setas(old_as);
+
+            for(i--; i>-1; i--) {
+                kfree(kargs[i]);
+            }
+            kfree(size);
+            kfree(kargs);
+            kfree(argptr);
+            as_destroy(new_as);
             return result;
         }
     }
-
-
 
     /* Recycle */    
     as_destroy(old_as);
@@ -462,6 +472,8 @@ int sys_execv(const char *program, char **args)
         kfree(kargs[i]);
     }
     kfree(kargs); 
+    kfree(size);
+    kfree(argptr);
     
     /* Warp to user mode. */
 	enter_new_process(argc /*argc*/, (userptr_t)initial_stackptr /*userspace addr of argv*/,
