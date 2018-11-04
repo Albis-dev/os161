@@ -163,6 +163,7 @@ int sys_waitpid(pid_t pid, int *status, int options, int32_t *retval)
      * EFAULT 	The status argument was an invalid pointer.
      */
     int result;
+    char *temp = kmalloc(1);
 
     // "child" means the process we're waiting for
 
@@ -171,6 +172,17 @@ int sys_waitpid(pid_t pid, int *status, int options, int32_t *retval)
     KASSERT(curproc != NULL);
     struct proc *proc = curproc;
     KASSERT(proc != NULL);
+
+    // is status a valid pointer?
+    if (status == NULL) {
+        /* POSIX explicitly says passing NULL for status is allowed */
+    } else {
+        result = copyin((userptr_t)status, temp, 1);
+        kfree(temp);
+        if (result) {
+            return EFAULT;
+        }
+    }
 
     // is the pid valid?
     if (pid < PID_MIN || pid > PID_MAX) {
@@ -197,16 +209,16 @@ int sys_waitpid(pid_t pid, int *status, int options, int32_t *retval)
     // set a return value 
     *retval = childproc->pid;
 
-    // while the child has not exited...
-
+    // if the child has not exited yet, just sleep
     P(childproc->sem_exit);
     
     KASSERT(childproc->exitcode != -1);
     // store the encoded exitcode to *status
-    result = copyout(&childproc->exitcode, (userptr_t)status, sizeof(childproc->exitcode));
-    if (result) {
-        panic("copyout is not working!");
-        return result;
+    if (status != NULL) {
+        result = copyout(&childproc->exitcode, (userptr_t)status, sizeof(childproc->exitcode));
+        if (result) {
+            return result;
+        }
     }
 
     // unlink the proc table

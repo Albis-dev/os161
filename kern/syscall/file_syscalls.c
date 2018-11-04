@@ -348,8 +348,6 @@ int sys_lseek (int fd, off_t pos, int whence, off_t *retval)
                  (whence == SEEK_CUR) ||
                  (whence == SEEK_END))) {
         /* Invalid argument */
-        return ESPIPE;
-    } else if (pos < 0) {
         return EINVAL;
     } else {
         lock_acquire(fh->fh_lock);
@@ -367,8 +365,16 @@ int sys_lseek (int fd, off_t pos, int whence, off_t *retval)
     KASSERT(lock_do_i_hold(fh->fh_lock));
 
     if (whence == SEEK_SET) {
+        if (pos < 0) {
+            lock_release(fh->fh_lock);
+            return EINVAL;
+        }
         fh->fh_offset = pos;
     } else if (whence == SEEK_CUR) {
+        if (fh->fh_offset + pos < 0) {
+            lock_release(fh->fh_lock);
+            return EINVAL;
+        }
         fh->fh_offset += pos;
     } else if (whence == SEEK_END) {
         struct stat filestat;
@@ -376,7 +382,12 @@ int sys_lseek (int fd, off_t pos, int whence, off_t *retval)
         result = VOP_STAT(fh->fh_vnode, &filestat);
         if (result) {
             /* Can't check filesize */
+            lock_release(fh->fh_lock);
             return result;
+        }
+        if (filestat.st_size + pos < 0) {
+            lock_release(fh->fh_lock);
+            return EINVAL;
         }
 
         fh->fh_offset = filestat.st_size + pos;
